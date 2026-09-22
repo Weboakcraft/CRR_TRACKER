@@ -85,7 +85,10 @@ browser keeps its own separate copy. The app now says this plainly on the Follow
 and Call Tracker pages and in the sidebar, instead of leaving people to discover it.
 
 To make a team share one log, set `apiUrl` in `js/config.js` to a deployed
-`backend/Code.gs` Web App URL (SETUP.md, step 2). With it set:
+`backend/Code.gs` Web App URL (SETUP.md, step 2), then use **Test Connection** on the
+Call Tracker to confirm it. That check names the actual problem — a key mismatch, a
+deployment that is not open to Anyone, a `/dev` URL, or an unreachable script —
+instead of failing quietly. With `apiUrl` set:
 
 - Every entry is pushed to the sheet as it is logged.
 - The app polls the sheet every `CONFIG.syncIntervalSec` seconds (45 by default),

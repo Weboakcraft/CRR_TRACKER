@@ -14,7 +14,7 @@ window.OAK.CONFIG = {
         Access "Anyone"
      3. Copy the /exec URL below. Leave blank to run offline
         (all activity is still saved in this browser).            */
-  apiUrl: '',
+  apiUrl: 'https://script.google.com/macros/s/AKfycbx4ZujmuuXZ30RG52yAmuSFLyX0f_LwmRGZZtIFOm9M3RSUKSDAwHkzSXDKjeC4RTKbPQ/exec',
   apiKey: 'OAKCRAFT-CRR-2026',
   /* how often to ask the sheet what the rest of the team has logged */
   syncIntervalSec: 45,

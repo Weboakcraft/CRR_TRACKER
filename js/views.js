@@ -531,7 +531,8 @@ V.tracker = function(host){
       <button class="btn sm" id="tExp">&#8681; Export CSV</button>
       <button class="btn sm" id="tBak">&#128190; Backup JSON</button>
       <button class="btn sm" id="tRes">&#8593; Restore</button>
-      <button class="btn sm" id="tSync">&#8635; Push to Sheets</button></div></div>
+      <button class="btn sm" id="tSync">&#8635; Push to Sheets</button>
+      <button class="btn sm" id="tTest">&#128268; Test Connection</button></div></div>
     <div class="panel-body flush" id="tGrid"></div></div>`;
 
   wireSharingBanner(host);
@@ -567,6 +568,7 @@ V.tracker = function(host){
       {key:'voided_by',label:'Voided By'}]));
     O.toast('Activity log exported'); });
   O.$('#tSync')?.addEventListener('click',()=>T.syncAll());
+  O.$('#tTest')?.addEventListener('click',()=>T.test());
   O.$('#tBak')?.addEventListener('click',()=>T.backup());
   O.$('#tRes')?.addEventListener('click',()=>{
     const inp=O.el('input',{type:'file',accept:'.json,application/json'});

@@ -244,6 +244,55 @@ const T = O.Tracker = {
 
   /* ---- Google Sheets backend (Apps Script Web App) ---- */
   online(){ return !!C().apiUrl; },
+
+  /* A one-click check that the Web App is really reachable, really
+     deployed, and really using the same key. Apps Script fails in a few
+     specific ways and each one needs a different fix, so name it. */
+  test(){
+    const url = C().apiUrl;
+    if(!url){ O.modal('Sharing is not switched on yet', OFFLINE_HELP,
+      [{label:'Close',cls:'ghost',act:()=>O.closeModal()}]); return; }
+    const say = (tone, title, detail) => O.modal('Connection test',
+      `<div class="dr-note" style="border-left-color:var(--${tone})">
+         <b style="color:var(--${tone})">${title}</b><br>
+         <span style="font-size:12.5px;color:var(--tx-2);line-height:1.7">${detail}</span></div>
+       <div style="font-size:11.5px;color:var(--tx-3);margin-top:12px;word-break:break-all">
+         <b>URL</b><br>${O.esc(url)}</div>`,
+      [{label:'Close',cls:'ghost',act:()=>O.closeModal()}]);
+
+    O.toast('Testing the Google Sheets connection…','info');
+    const t0 = Date.now();
+    fetch(url+'?action=ping&key='+encodeURIComponent(C().apiKey))
+      .then(r=>r.text().then(txt=>({status:r.status, txt})))
+      .then(({status, txt})=>{
+        let res=null; try{ res=JSON.parse(txt); }catch(e){}
+        if(res && res.ok){
+          return this.pull().then(()=>{
+            const n=readAll().length;
+            say('ok','&#10004; Connected.',
+              `The Web App answered in ${Date.now()-t0}ms. Sheet time: <b>${O.esc(res.time||'—')}</b>.<br>
+               ${O.fmt.n(n)} activit${n===1?'y':'ies'} on record here. New entries will be shared with
+               everyone on this link, and the app re-checks the sheet every
+               ${O.num(C().syncIntervalSec)||45} seconds.`);
+          });
+        }
+        if(res && res.error) return say('bad','&#10005; The script answered, but refused.',
+          `It said: <b>${O.esc(res.error)}</b>.<br>Usually this means <code>API_KEY</code> in
+           <code>Code.gs</code> does not match <code>apiKey</code> in <code>js/config.js</code>.`);
+        if(/<html|<!DOCTYPE/i.test(txt)) return say('bad','&#10005; Google returned a login page, not data.',
+          `The deployment is not open to everyone. In Apps Script:
+           <b>Deploy &rarr; Manage deployments &rarr; Edit</b>, set
+           <b>Execute as: Me</b> and <b>Who has access: Anyone</b>, then deploy a
+           <b>New version</b>.`);
+        say('bad','&#10005; Unexpected reply (HTTP '+status+').',
+          `First part of what came back:<br><code style="font-size:11px">${O.esc(txt.slice(0,220))}</code>`);
+      })
+      .catch(e=>say('bad','&#10005; Could not reach the Web App.',
+        `<code>${O.esc(String(e.message||e))}</code><br><br>
+         Check that the URL ends in <code>/exec</code> (not <code>/dev</code>), that the
+         deployment is <b>Web app</b> with access <b>Anyone</b>, and that you deployed a
+         <b>New version</b> after the last edit to <code>Code.gs</code>.`));
+  },
   push(act){
     if(!this.online()) return Promise.resolve({offline:true});
     return fetch(C().apiUrl, {
