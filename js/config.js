@@ -16,6 +16,8 @@ window.OAK.CONFIG = {
         (all activity is still saved in this browser).            */
   apiUrl: '',
   apiKey: 'OAKCRAFT-CRR-2026',
+  /* how often to ask the sheet what the rest of the team has logged */
+  syncIntervalSec: 45,
 
   /* ---- WHATSAPP ------------------------------------------------ */
   countryCode: '91',

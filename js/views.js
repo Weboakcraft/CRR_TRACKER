@@ -34,6 +34,21 @@ function miniTable(rows, cols){
       cols.map(c=>`<td class="${c.num?'num':''}">${c.get(r)}</td>`).join('')}</tr>`).join('')
     }</tbody></table></div>`;
 }
+/* The app must never let a team believe it is sharing when it is not. */
+function sharingBanner(){
+  if(O.Tracker.online()) return '';
+  return `<div class="callout" style="border-left-color:var(--warn);margin-bottom:16px">
+    <b style="color:var(--warn)">&#9888; This log is saved in your browser only — it is NOT shared.</b>
+    Sending someone the link does not send them your entries, and their remarks never reach you.
+    <button class="btn xs" id="shareHelp" style="margin-left:10px">How to share with the team &#8250;</button>
+  </div>`;
+}
+function wireSharingBanner(host){
+  const b = O.$('#shareHelp', host);
+  if(b) b.addEventListener('click',()=>O.modal('Sharing is not switched on yet', O.offlineHelp(),
+    [{label:'Close',cls:'ghost',act:()=>O.closeModal()}]));
+}
+
 function wireRows(host){
   O.$$('tbody tr[data-n]',host).forEach(tr=>tr.addEventListener('click',()=>{
     const c=O.data.customers.find(x=>x.customer_name===tr.dataset.n); if(c) O.openCustomer(c); }));
@@ -378,6 +393,7 @@ V.followups = function(host){
       ? `<b style="color:var(--bad)">&#9888; ${O.fmt.n(F.overdue.length)} follow-up${F.overdue.length===1?' is':'s are'} past the promised date.</b>
          Closing one never deletes it — the outcome is appended and the whole chain stays on record.`
       : `<b>Closing a follow-up never deletes it.</b> The outcome is appended to the log and the original promise stays on record, so the full history is always auditable.`) +
+  sharingBanner() +
   `<div class="chips" id="fuTabs" style="margin-bottom:14px">
     ${FU_TABS.map(t=>`<span class="chip${t.k===tab?' on':''}" data-t="${t.k}">${t.label}
       <b style="margin-left:6px;opacity:.8">${O.fmt.n(count(t.k))}</b></span>`).join('')}
@@ -394,6 +410,7 @@ V.followups = function(host){
     <div class="panel-body flush" id="fuGrid"></div>
   </div>`;
 
+  wireSharingBanner(host);
   O.$$('#fuTabs .chip',host).forEach(ch=>ch.addEventListener('click',()=>{
     O.fuTab = ch.dataset.t; O.render(); }));
   O.$('#fuToday').addEventListener('click',()=>{ O.fuTab='today'; O.render(); });
@@ -498,8 +515,9 @@ V.tracker = function(host){
 
   host.innerHTML = head('Field Operations','Call Tracker',
     'Every call, WhatsApp, visit and quotation your team logs — an append-only record. Entries are never deleted or overwritten; a correction is logged as a new entry beside the original.',
-    T.online() ? `<b>Google Sheets backend connected.</b> ${s.unsynced?`${s.unsynced} activities still pending — hit Sync in the top bar.`:'All activities synced.'}`
-    : `<b>Running in local mode.</b> Activities are saved in this browser only. Use <b>Backup JSON</b> below to keep a copy that survives a cleared browser, or deploy <code>backend/Code.gs</code> as a Web App and paste the <code>/exec</code> URL into <code>js/config.js</code> to write them straight into Google Sheets.`) +
+    T.online() ? `<b>Google Sheets backend connected.</b> Everyone on this link shares one log, refreshed every ${O.num(C().syncIntervalSec)||45}s. ${s.unsynced?`${s.unsynced} activities still pending — hit Sync in the top bar.`:'All activities synced.'}`
+    : '') +
+  sharingBanner() +
   `${F.dueNow.length?`<div class="callout" style="border-left-color:var(--bad);margin-bottom:16px">
     <b style="color:var(--bad)">&#9200; ${O.fmt.n(F.dueNow.length)} follow-up${F.dueNow.length===1?'':'s'} need attention</b>
     — ${O.fmt.n(F.today.length)} due today${F.overdue.length?`, ${O.fmt.n(F.overdue.length)} overdue`:''}.
@@ -516,6 +534,7 @@ V.tracker = function(host){
       <button class="btn sm" id="tSync">&#8635; Push to Sheets</button></div></div>
     <div class="panel-body flush" id="tGrid"></div></div>`;
 
+  wireSharingBanner(host);
   const goFu=O.$('#tGoFu'); if(goFu) goFu.addEventListener('click',()=>O.go('followups'));
 
   if(acts.length){
@@ -525,7 +544,7 @@ V.tracker = function(host){
         type:a.type, disposition:a.disposition, phone:a.phone, phones:a.phone?[a.phone]:[],
         has_phone:!!a.phone, value:a.value, followup:a.followup, agent:a.agent, note:a.note,
         state:a.state, synced:a.synced?'Yes':'Pending',
-        record: a.voided ? 'Voided' : a.type==='void' ? 'Void marker'
+        record: T.isVoided(a) ? 'Voided' : a.type==='void' ? 'Void marker'
               : a.closes ? 'Follow-up outcome' : 'Original',
         voided_by:a.voided_by||'', void_reason:a.void_reason||''})),
       cols:['seq','customer_name','when','type','disposition','value','followup','agent','note','record','synced'],

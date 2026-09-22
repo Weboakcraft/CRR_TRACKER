@@ -3,6 +3,30 @@
 'use strict';
 const C=()=>O.CONFIG;
 let FU = null;   // memoised follow-up model
+let AUTO = null; // auto-sync interval handle
+const istTime = () => new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+
+/* Shown wherever the app has to admit that nothing is being shared. */
+const OFFLINE_HELP = `
+  <p style="font-size:13px;line-height:1.75;color:var(--tx-2)">
+    Right now every remark, call and follow-up is saved <b>only in this browser</b>
+    (<code>localStorage</code>). Sharing a link does not share the data — your colleague's
+    browser has its own separate copy, so neither of you can see the other's entries.</p>
+  <p style="font-size:13px;line-height:1.75;color:var(--tx-2);margin-top:10px">
+    To make the team share one log, give the app a backend:</p>
+  <ol style="font-size:13px;line-height:1.85;color:var(--tx-2);margin:8px 0 0 18px">
+    <li>Create a Google Sheet for the team.</li>
+    <li>Extensions &rarr; Apps Script, paste in <code>backend/Code.gs</code> from this repo.</li>
+    <li>Deploy &rarr; New deployment &rarr; <b>Web app</b>, execute as <b>Me</b>,
+        access <b>Anyone</b>.</li>
+    <li>Copy the <code>/exec</code> URL into <code>apiUrl</code> in <code>js/config.js</code>,
+        then commit and push.</li>
+  </ol>
+  <p style="font-size:12.5px;color:var(--tx-3);margin-top:12px">
+    Full walkthrough in <code>SETUP.md</code>, step 2. Until then, use
+    <b>Backup JSON</b> on the Call Tracker to move a log between machines by hand —
+    nothing is lost either way.</p>`;
+O.offlineHelp = () => OFFLINE_HELP;
 
 /* ---------------- Activity store — APPEND ONLY ----------------------------
    Nothing in here ever deletes an activity. A mistake is corrected by
@@ -31,6 +55,19 @@ function writeAll(list){
   return false;
 }
 function newId(){ return 'A'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+
+/* A void is a record of its own ('voids' points at the entry it cancels),
+   so it travels through Google Sheets like any other row. The flag written
+   on the original is only a local convenience — never trust it alone, or a
+   void made on one device stays invisible on every other one. */
+let VOIDED = null, VOIDED_AT = -1;
+function voidedIds(){
+  if(VOIDED && VOIDED_AT===STAMP) return VOIDED;
+  VOIDED = new Set();
+  readAll().forEach(a=>{ if(a.voids) VOIDED.add(a.voids); if(a.voided) VOIDED.add(a.id); });
+  VOIDED_AT = STAMP;
+  return VOIDED;
+}
 function nextSeq(list){
   if(MAXSEQ==null) MAXSEQ = list.reduce((m,x)=>Math.max(m, O.num(x.seq)), 0);
   return ++MAXSEQ;
@@ -41,7 +78,8 @@ const T = O.Tracker = {
   all(){ return readAll(); },
   /* what the log shows by default — voided entries stay on record but are
      folded out of the working views unless explicitly asked for */
-  live(){ return readAll().filter(a=>!a.voided && a.type!=='void'); },
+  live(){ const v=voidedIds(); return readAll().filter(a=>!v.has(a.id) && a.type!=='void'); },
+  isVoided(a){ return voidedIds().has(a && a.id); },
   stamp(){ return STAMP; },
   forCustomer(name){ return readAll().filter(a=>a.customer_name===name)
     .sort((a,b)=> b.ts.localeCompare(a.ts)); },
@@ -94,7 +132,7 @@ const T = O.Tracker = {
     const ix = O.customerIndex ? O.customerIndex() : null;
     const all = [];
     acts.forEach(a=>{
-      if(!a.followup || a.voided) return;
+      if(!a.followup || voidedIds().has(a.id)) return;
       const close = closedBy.get(a.id) || null;
       const cust = ix ? (a.sr_no!=null && ix.bySr.get(a.sr_no)) || ix.byName.get(a.customer_name) : null;
       const diff = O.dayDiff(today, a.followup);
@@ -189,7 +227,7 @@ const T = O.Tracker = {
     return {
       total:a.length,
       allRecords:readAll().length,
-      voided:readAll().filter(x=>x.voided).length,
+      voided:voidedIds().size,
       today:a.filter(x=>(x.day||x.ts.slice(0,10))===today).length,
       connected:a.filter(x=>/^Connected/.test(x.disposition||'')).length,
       positive:a.filter(x=>pos.includes(x.disposition)).length,
@@ -221,11 +259,14 @@ const T = O.Tracker = {
       return res;
     }).catch(e=>{ O.setSync('off','Sheets unreachable — saved locally'); return {error:String(e)}; });
   },
-  syncAll(){
-    if(!this.online()){ O.toast('Set CONFIG.apiUrl in js/config.js to enable Google Sheets sync','warn',4200); return; }
-    const pend=this.all().filter(a=>!a.synced);
-    if(!pend.length){ O.toast('Everything already synced'); return; }
-    O.toast(`Syncing ${pend.length} activities…`,'info');
+  syncAll(quiet){
+    if(!this.online()){
+      if(!quiet) O.modal('Sharing is not switched on yet', OFFLINE_HELP,
+        [{label:'Close',cls:'ghost',act:()=>O.closeModal()}]);
+      return; }
+    const pend=readAll().filter(a=>!a.synced);
+    if(!pend.length){ if(!quiet){ O.toast('Everything already synced'); this.pull().then(a=>{ if(a) O.render(); }); } return; }
+    if(!quiet) O.toast(`Syncing ${pend.length} activities…`,'info');
     fetch(C().apiUrl,{method:'POST',mode:'cors',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       body:JSON.stringify({action:'bulk',key:C().apiKey,payload:pend})})
@@ -233,10 +274,11 @@ const T = O.Tracker = {
         if(res&&res.ok){ const ids=new Set(pend.map(p=>p.id));
           const list=readAll().map(a=> ids.has(a.id)?Object.assign({},a,{synced:true}):a );
           writeAll(list);
-          O.toast(`${pend.length} activities pushed to Google Sheets`); O.setSync('on','Synced');
-          O.render();
-        } else O.toast('Sync failed: '+(res.error||'unknown'),'err',4000);
-      }).catch(e=>{ O.toast('Sync failed — check the Web App URL & deployment access','err',4200);
+          if(!quiet) O.toast(`${pend.length} activities pushed to Google Sheets`);
+          O.setSync('on','Synced · '+istTime());
+          this.pull().then(()=>O.render());
+        } else if(!quiet) O.toast('Sync failed: '+(res.error||'unknown'),'err',4000);
+      }).catch(e=>{ if(!quiet) O.toast('Sync failed — check the Web App URL & deployment access','err',4200);
         O.setSync('off','Sheets unreachable'); });
   },
   pull(){
@@ -247,9 +289,30 @@ const T = O.Tracker = {
         const local=readAll().slice(), ids=new Set(local.map(a=>a.id));
         let added=0;
         res.rows.forEach(r=>{ if(r.id && !ids.has(r.id)){ r.synced=true; local.push(r); added++; } });
-        if(added){ MAXSEQ=null; writeAll(local); O.toast(`Pulled ${added} activities from Google Sheets`); }
-        O.setSync('on','Connected to Google Sheets');
-      }).catch(()=>O.setSync('off','Offline — local storage only'));
+        if(added){ MAXSEQ=null; writeAll(local); }
+        O.setSync('on', added?`+${added} from the team · ${istTime()}`:`In sync · ${istTime()}`);
+        return added;
+      }).catch(()=>{ O.setSync('off','Sheets unreachable — showing local copy'); return 0; });
+  },
+
+  /* ---- Live sharing -----------------------------------------------------
+     Two people on the same URL only see each other's work if this browser
+     keeps asking the sheet what changed. Without it a colleague's remark
+     sits in Google Sheets until someone reloads the page.                */
+  autoSync(){
+    if(AUTO) return;                       // already running
+    const every = Math.max(15, O.num(C().syncIntervalSec) || 45) * 1000;
+    const tick = (quiet)=>{
+      if(!this.online() || document.hidden) return;
+      const pending = readAll().filter(a=>!a.synced);
+      if(pending.length) this.syncAll(true);          // retry what never landed
+      this.pull().then(added=>{ if(added) O.render(); });
+    };
+    AUTO = setInterval(tick, every);
+    /* coming back to the tab is the moment you most want fresh data */
+    document.addEventListener('visibilitychange',()=>{ if(!document.hidden) tick(); });
+    window.addEventListener('online', ()=>tick());
+    tick();
   },
 
   /* ---- Log-call modal ---- */
@@ -304,7 +367,8 @@ const T = O.Tracker = {
         state: c.state||'', segment: c.seg_label||'', total_value: O.num(c.total_value)
       });
       O.closeModal();
-      O.toast('Activity saved'+(T.online()?' & pushed to Google Sheets':' locally'));
+      O.toast(T.online() ? 'Activity saved & shared with the team'
+                         : 'Saved on THIS DEVICE only — the team cannot see it', T.online()?'':'warn', 4200);
       if(alsoWA && c.phones && c.phones.length) O.quickWA(c);
       O.render();
     }

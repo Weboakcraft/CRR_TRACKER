@@ -342,8 +342,8 @@ O.boot = function(){
                 if(!O.moduleHidden(k.slice(2))) O.route={page:'module',param:k.slice(2)}; }
               else O.route={page:k,param:null}; }
       O.setSync(O.Tracker.online()?'on':'off',
-        O.Tracker.online()?'Google Sheets connected':'Local storage only');
-      if(O.Tracker.online()) O.Tracker.pull();
+        O.Tracker.online()?'Shared with the team':'This browser only — not shared');
+      if(O.Tracker.online()) O.Tracker.autoSync();
       O.render();
    })
    .catch(err=>{

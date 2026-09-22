@@ -77,6 +77,24 @@ every record, in sequence, including voided ones. Searchable, filterable by reco
 type, CSV export with the full audit columns, JSON backup and restore. Saves
 instantly in the browser and pushes to Google Sheets.
 
+### Sharing between people
+
+**Out of the box the tracker is single-browser.** Activities live in that browser's
+`localStorage`, so sending a colleague the URL does not send them your entries — their
+browser keeps its own separate copy. The app now says this plainly on the Follow-Ups
+and Call Tracker pages and in the sidebar, instead of leaving people to discover it.
+
+To make a team share one log, set `apiUrl` in `js/config.js` to a deployed
+`backend/Code.gs` Web App URL (SETUP.md, step 2). With it set:
+
+- Every entry is pushed to the sheet as it is logged.
+- The app polls the sheet every `CONFIG.syncIntervalSec` seconds (45 by default),
+  on returning to the tab, and when the network comes back — so a colleague's remark
+  appears without anyone reloading.
+- Entries that failed to push are retried automatically on the same cycle.
+- Voids travel too: a void is its own row pointing at the entry it cancels, so it
+  syncs like anything else rather than being a local-only flag.
+
 ### History is append-only
 
 Nothing in the tracker is ever deleted or overwritten.
