@@ -1,0 +1,11 @@
+.DS_Store
+Thumbs.db
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.log
+.vscode/
+.idea/
+# source workbook is kept in the repo for rebuilds
