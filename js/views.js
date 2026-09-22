@@ -45,7 +45,7 @@ function wireRows(host){
 V.dashboard = function(host){
   const A=O.data.analytics, K=A.kpi, M=O.data.meta;
   host.innerHTML = head('Command Center', 'Executive Dashboard',
-    `Live view of all ${O.fmt.n(K.total_customers)} real customer accounts extracted from ${O.esc(M.source_file)} across ${M.sheet_count} modules. Every figure below is computed directly from the source workbook — nothing is estimated or sampled.`) +
+    `Live view of all ${O.fmt.n(K.total_customers)} real customer accounts extracted from ${O.esc(M.source_file)} across ${O.modules().length} modules. Every figure below is computed directly from the source workbook — nothing is estimated or sampled.`) +
   `<div class="kpis">
     ${kpi({label:'Total Book Value', value:O.fmt.short(K.total_value), ico:'&#8377;',
       sub:`<span>${O.fmt.n(K.total_orders)} orders &middot; AOV ${O.fmt.short(K.avg_aov)}</span>`})}
@@ -649,7 +649,7 @@ V.campaign = function(host){
    6. MODULE VIEW — one per Excel sheet
    ================================================================== */
 V.module = function(host, id){
-  const meta = O.data.meta.modules.find(m=>m.id===id);
+  const meta = O.moduleHidden(id) ? null : O.data.meta.modules.find(m=>m.id===id);
   if(!meta){ host.innerHTML='<div class="empty"><b>Module not found</b></div>'; return; }
   host.innerHTML = `<div class="loading" style="height:300px"><div class="spin"></div></div>`;
   O.data.loadModule(id).then(mod=>{ paintModule(host, mod, meta); })

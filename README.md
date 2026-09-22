@@ -37,9 +37,11 @@ with **Python**.
 | 09 | Active Repeat — Protect | 70 | Champions. Defensive module. |
 | 10 | One-Time Buyers | 396 | Ordered once, never returned. Sorted by value. |
 | 11 | Near Factory — Visit | 70 | Bawana / Poothkhurd / Narela / Rithala belt. |
-| 12 | No Phone On File | 105 | Real money with no number — trace via GSTIN. |
-| 13 | Duplicates & Shared Phones | 42 | Merge groups. **Read the Group column first.** |
-| 14 | Data To Clean | 29 | Not real customers. Remove from the CRM. |
+
+Sheets 12 (No Phone On File), 13 (Duplicates & Shared Phones) and 14 (Data To Clean)
+are built and kept in `data/`, but have no section in the sidebar. They are listed in
+`CONFIG.hiddenModules` in `js/config.js` — delete an id from that list to bring its
+section back.
 
 ---
 

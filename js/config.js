@@ -45,6 +45,16 @@ window.OAK.CONFIG = {
   positiveDispositions: ['Connected — Interested','Connected — Order Expected',
     'Visit Scheduled','Quotation Sent','Connected — Follow-up'],
 
+  /* ---- MODULE SECTIONS ------------------------------------------
+     Sheets listed here get no section in the sidebar. The data files
+     stay in data/ and nothing is deleted — remove an id from this list
+     to bring its section straight back.                              */
+  hiddenModules: [
+    '12-no-phone-on-file',
+    '13-duplicates-shared-phones',
+    '14-data-to-clean'
+  ],
+
   currency: { symbol: '₹', locale: 'en-IN' },
   pageSize: 50
 };

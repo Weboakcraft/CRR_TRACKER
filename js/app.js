@@ -152,8 +152,14 @@ O.setSync = (state, label)=>{
 };
 
 /* ---------------- Navigation ---------------- */
+/* the sheets that actually get a section, per CONFIG.hiddenModules */
+O.modules = function(){
+  const hide = C().hiddenModules || [];
+  return (O.data.meta.modules||[]).filter(m=>!hide.includes(m.id));
+};
+O.moduleHidden = id => (C().hiddenModules||[]).includes(id);
+
 function navGroups(){
-  const m = O.data.meta;
   return [
     {title:'Command', items:[
       {id:'dashboard', ico:'&#9632;', label:'Executive Dashboard'},
@@ -163,7 +169,7 @@ function navGroups(){
       {id:'tracker',   ico:'&#9998;', label:'Call Tracker', badge: O.Tracker.all().length||null},
       {id:'campaign',  ico:'&#128172;', label:'WhatsApp Campaigns'}
     ]},
-    {title:'Modules — one per Excel sheet', items: m.modules.map(mod=>({
+    {title:'Modules — one per Excel sheet', items: O.modules().map(mod=>({
       id:'m:'+mod.id, ico:mod.code, label: modShort(mod.title),
       /* once a module has been opened we know how many rows survive de-duplication */
       badge: O.moduleCount[mod.id] != null ? O.moduleCount[mod.id] : mod.row_count,
@@ -205,7 +211,11 @@ O.buildNav = buildNav;
 O.routeKey = ()=> O.route.page==='module' ? 'm:'+O.route.param : O.route.page;
 
 O.go = function(key){
-  if(key.startsWith('m:')){ O.route={page:'module', param:key.slice(2)}; }
+  if(key.startsWith('m:')){
+    const id = key.slice(2);
+    if(O.moduleHidden(id)) { key='dashboard'; O.route={page:'dashboard', param:null}; }
+    else O.route={page:'module', param:id};
+  }
   else O.route={page:key, param:null};
   location.hash = '#'+key;
   buildNav(); O.render();
@@ -270,7 +280,7 @@ function shell(){
       <div class="nav" id="nav"></div>
       <div class="side-foot">
         <div><span class="sync-dot" id="syncDot"></span><span id="syncTxt">Local storage</span></div>
-        <div style="margin-top:4px;opacity:.75">${O.data.meta.unique_customers} accounts &middot; ${O.data.meta.sheet_count} modules</div>
+        <div style="margin-top:4px;opacity:.75">${O.data.meta.unique_customers} accounts &middot; ${O.modules().length} modules</div>
       </div>
     </aside>
     <div class="main">
@@ -328,7 +338,8 @@ O.boot = function(){
    .then(()=>{
       shell();
       const k=location.hash.slice(1);
-      if(k) { if(k.startsWith('m:')) O.route={page:'module',param:k.slice(2)};
+      if(k) { if(k.startsWith('m:')){
+                if(!O.moduleHidden(k.slice(2))) O.route={page:'module',param:k.slice(2)}; }
               else O.route={page:k,param:null}; }
       O.setSync(O.Tracker.online()?'on':'off',
         O.Tracker.online()?'Google Sheets connected':'Local storage only');
