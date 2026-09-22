@@ -45,9 +45,10 @@ with **Python**.
 
 ## Features
 
-**Executive Dashboard** — 8 live KPIs, 30-month order-recency timeline, churn-health
-mix, recency buckets, state revenue, lifecycle segments, action priorities, and three
-leaderboards (value, upside, revenue at risk).
+**Executive Dashboard** — the one and only dashboard in the app: 8 live KPIs,
+30-month order-recency timeline, churn-health mix, recency buckets, state revenue,
+lifecycle segments, action priorities, and three leaderboards (value, upside, revenue
+at risk). Every other section is a working list, not a second dashboard.
 
 **Advanced Analytics** — Pareto/ABC concentration with the 80% line, ABC value split,
 a 5×5 RFM matrix (click any cell to drill into that group), value-vs-recency bubble
@@ -60,9 +61,9 @@ book value (25%) + upside × churn-risk, multiplied by phone reachability, the
 recommended action, and research confidence.
 
 **Call Tracker** — log calls, WhatsApp, visits, emails and quotations with
-disposition, expected value, follow-up date and notes. Daily activity chart, outcome
-mix, overdue and upcoming follow-ups, full searchable log, CSV export. Saves instantly
-in the browser and pushes to Google Sheets.
+disposition, expected value, follow-up date and notes. Overdue and upcoming
+follow-ups, full searchable log, CSV export. Saves instantly in the browser and
+pushes to Google Sheets.
 
 **WhatsApp** — a WhatsApp button on every row, in every module and in the customer
 drawer. Six message templates with placeholders filled from each customer's real data
@@ -72,6 +73,13 @@ logs every message, and CSV export of `wa.me` links for a BSP or bulk tool.
 
 **Customer 360 drawer** — every field from every sheet the account appears in,
 pitch angle, churn reason, GSTIN, address, source link, and full activity history.
+**Total Value, AOV and Last Order live here only** — they are kept out of the section
+tables so the lists stay scannable. Click any customer to see them.
+
+**One customer, one row** — records that share a mobile number are the same buyer, so
+only the record carrying the most business is listed and the rest are hidden. Each
+section says how many it hid. Sheet 13 (Duplicates & Shared Phones) is left untouched,
+because listing the duplicates is that sheet's job.
 
 **Everywhere** — global search (Ctrl+K) across names, phones, GSTINs and states;
 sortable, filterable, paginated grids with column toggles; CSV export on every table;

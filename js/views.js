@@ -308,28 +308,19 @@ V.queue = function(host){
     });
   }).sort((a,b)=>b.priority-a.priority);
 
-  const callNow = scored.filter(c=>/CALL NOW/i.test(c.recommended_action||''));
-  const reachable = scored.filter(c=>c.has_phone);
-  const top50 = scored.slice(0,50);
+  /* one customer, one row — records sharing a mobile are the same buyer */
+  const ranked = O.dedupeByPhone(scored);
+  const merged = scored.length - ranked.length;
 
   host.innerHTML = head('Execution','Priority Call Queue',
     custom ? `Filtered to the ${O.fmt.n(cs.length)} accounts in the RFM cell you selected.`
     : 'Every real account ranked by a composite of 12-month upside, current book value, churn urgency, phone reachability and the recommended action carried in the workbook.',
     custom ? `<button class="btn xs" id="clrSel">&#10005; Clear RFM filter and show all accounts</button>` :
     `<b>How the score works:</b> upside (55%) + book value (25%) + upside×churn-risk (60% weight) — then multiplied by reachability (accounts with no phone are down-weighted to 25%), the recommended action, and research confidence. All inputs are real columns from your file.`) +
-  `<div class="kpis">
-    ${kpi({label:'Marked CALL NOW', value:O.fmt.n(callNow.length), ico:'&#9889;', color:'var(--bad)', bg:'var(--bad-dim)',
-      sub:`<span>${O.fmt.short(callNow.reduce((s,c)=>s+O.num(c.upside),0))} upside</span>`})}
-    ${kpi({label:'Reachable By Phone', value:O.fmt.n(reachable.length), ico:'&#128222;', color:'var(--wa)',
-      bg:'rgba(37,211,102,.13)', sub:`<span>${O.fmt.n(scored.length-reachable.length)} need a number traced</span>`})}
-    ${kpi({label:'Top 50 Upside', value:O.fmt.short(top50.reduce((s,c)=>s+O.num(c.upside),0)), ico:'&#9650;',
-      color:'var(--ok)', bg:'var(--ok-dim)', sub:'<span>If you only work the first page</span>'})}
-    ${kpi({label:'Logged Today', value:O.fmt.n(O.Tracker.stats().today), ico:'&#9998;', color:'var(--info)',
-      bg:'var(--info-dim)', sub:`<span>${O.fmt.n(O.Tracker.stats().total)} total activities</span>`})}
-  </div>
-  <div class="panel">
+  `<div class="panel">
     <div class="panel-head"><div><div class="panel-title">Ranked Queue</div>
-      <div class="panel-desc">${O.fmt.n(scored.length)} real accounts — highest priority first</div></div>
+      <div class="panel-desc">${O.fmt.n(ranked.length)} real accounts — highest priority first${
+        merged?` &middot; ${O.fmt.n(merged)} duplicate ${merged===1?'record':'records'} hidden (same mobile number)`:''}</div></div>
       <div class="panel-tools">
         <button class="btn sm" id="qCallNow">&#9889; CALL NOW only</button>
         <button class="btn sm" id="qPhone">&#128222; Reachable only</button>
@@ -340,8 +331,8 @@ V.queue = function(host){
 
   if(custom) O.$('#clrSel').addEventListener('click',()=>{ O.rfmSel=null; O.render(); });
 
-  const grid = O.Grid({host:O.$('#qGrid'), rows:scored,
-    cols:['customer_name','state','seg_label','total_orders','total_value','upside',
+  const grid = O.Grid({host:O.$('#qGrid'), rows:ranked,
+    cols:['customer_name','state','seg_label','total_orders','upside',
           'days_since','churn_risk','recommended_action','phone','confidence'],
     sort:'priority', dir:'desc', exportName:'oakcraft-priority-queue',
     filters:[{key:'state',label:'State'},{key:'recommended_action',label:'Action'},
@@ -365,38 +356,12 @@ V.tracker = function(host){
   const due = acts.filter(a=>a.followup && a.followup<=today);
   const upcoming = acts.filter(a=>a.followup && a.followup>today)
     .sort((a,b)=>a.followup.localeCompare(b.followup));
-  const byDay={}; acts.forEach(a=>{const d=a.ts.slice(0,10); byDay[d]=(byDay[d]||0)+1;});
-  const days=Object.keys(byDay).sort().slice(-21);
-  const byDisp={}; acts.forEach(a=>{const d=a.disposition||a.type; byDisp[d]=(byDisp[d]||0)+1;});
 
   host.innerHTML = head('Field Operations','Call Tracker',
     'Every call, WhatsApp, visit and quotation your team logs. Saved instantly in this browser and pushed to your Google Sheet when the backend URL is configured.',
     T.online() ? `<b>Google Sheets backend connected.</b> ${s.unsynced?`${s.unsynced} activities still pending — hit Sync in the top bar.`:'All activities synced.'}`
     : `<b>Running in local mode.</b> Activities are saved in this browser only. To write them into Google Sheets, deploy <code>backend/Code.gs</code> as a Web App and paste the <code>/exec</code> URL into <code>js/config.js</code>.`) +
-  `<div class="kpis">
-    ${kpi({label:'Total Activities', value:O.fmt.n(s.total), ico:'&#9998;'})}
-    ${kpi({label:'Logged Today', value:O.fmt.n(s.today), ico:'&#9200;', color:'var(--info)', bg:'var(--info-dim)'})}
-    ${kpi({label:'Connected Calls', value:O.fmt.n(s.connected), ico:'&#128222;', color:'var(--ok)', bg:'var(--ok-dim)',
-      sub:`<span>${s.total?O.fmt.pct(s.connected/s.total*100,0):'—'} connect rate</span>`,
-      bar:s.total?s.connected/s.total*100:0})}
-    ${kpi({label:'Positive Outcomes', value:O.fmt.n(s.positive), ico:'&#9733;', color:'var(--acc)',
-      sub:`<span>${s.total?O.fmt.pct(s.positive/s.total*100,0):'—'} of activities</span>`,
-      bar:s.total?s.positive/s.total*100:0})}
-    ${kpi({label:'WhatsApp Sent', value:O.fmt.n(s.wa), ico:'&#128172;', color:'var(--wa)', bg:'rgba(37,211,102,.13)'})}
-    ${kpi({label:'Pipeline Logged', value:O.fmt.short(s.pipeline), ico:'&#8377;', color:'var(--ok)', bg:'var(--ok-dim)',
-      sub:'<span>Expected order value entered</span>'})}
-    ${kpi({label:'Follow-ups Due', value:O.fmt.n(due.length), ico:'&#9888;',
-      color: due.length?'var(--bad)':'var(--tx-3)', bg:due.length?'var(--bad-dim)':'var(--bg-4)'})}
-    ${kpi({label:'Pending Sync', value:O.fmt.n(s.unsynced), ico:'&#8635;',
-      color:s.unsynced?'var(--warn)':'var(--ok)', bg:s.unsynced?'var(--warn-dim)':'var(--ok-dim)'})}
-  </div>
-
-  <div class="grid g-21">
-    ${panel('Daily Activity','Activities logged per day (last 21 active days)','c-act')}
-    ${panel('Outcome Mix','Disposition breakdown','c-disp')}
-  </div>
-
-  ${due.length?`<div class="panel" style="margin-bottom:16px"><div class="panel-head">
+  `${due.length?`<div class="panel" style="margin-bottom:16px"><div class="panel-head">
     <div><div class="panel-title" style="color:var(--bad)">&#9888; Follow-ups Due Now (${due.length})</div>
     <div class="panel-desc">These were promised on or before today</div></div></div>
     <div class="panel-body flush"><div class="tbl-wrap"><table class="dt"><thead><tr>
@@ -428,14 +393,6 @@ V.tracker = function(host){
       <button class="btn sm" id="tSync">&#8635; Push to Sheets</button>
       <button class="btn sm danger" id="tClr">Clear Local Log</button></div></div>
     <div class="panel-body flush" id="tGrid"></div></div>`;
-
-  Ch().bars(O.$('#c-act'), days.map(d=>({key:d, label:O.fmt.dateShort(d).slice(0,6), value:byDay[d]})),
-    {height:210, format:v=>Math.round(v), vLabel:'Activities:'});
-  const dispArr=Object.entries(byDisp).map(([k,v],i)=>({key:k,value:v,count:v,
-    color:C().positiveDispositions.includes(k)?'var(--ok)':/No Answer|Wrong|Switched|Not Interested/.test(k)?'var(--bad)':O.color(i)}));
-  if(dispArr.length) Ch().donut(O.$('#c-disp'), dispArr, {size:170, format:v=>O.fmt.n(v),
-    centerValue:O.fmt.n(acts.length), centerLabel:'LOGGED'});
-  else O.$('#c-disp').innerHTML='<div class="empty"><div class="empty-ico">&#9998;</div><b>Nothing logged yet</b>Log your first call from any module</div>';
 
   if(acts.length){
     O.Grid({host:O.$('#tGrid'),
@@ -499,7 +456,7 @@ V.campaign = function(host){
     {id:'p7', name:'Champions — protect & upsell', tpl:'intro',
      desc:'Active repeat payers. Defensive campaign: first look at new models.',
      f:c=>(c.sheets||[]).some(s=>/ACTIVE REPEAT/i.test(s)) && c.has_phone},
-  ].map(p=>{ const rows=cs.filter(p.f);
+  ].map(p=>{ const rows=O.dedupeByPhone(cs.filter(p.f));
     return Object.assign(p,{rows, count:rows.length,
       value:rows.reduce((s,c)=>s+O.num(c.total_value),0),
       upside:rows.reduce((s,c)=>s+O.num(c.upside),0)}); });
@@ -508,16 +465,7 @@ V.campaign = function(host){
   host.innerHTML = head('Outreach','WhatsApp Campaigns',
     `Ready-made campaign lists built from the real segmentation in your workbook. ${O.fmt.n(reach.length)} of ${O.fmt.n(cs.length)} accounts carry a working number, so those are the only ones a WhatsApp campaign can reach.`,
     `<b>How sending works:</b> browsers block mass auto-opening of chats, so each campaign runs as a guided sequence — one chat opens at a time with the message pre-filled, and every send is logged to the Call Tracker automatically. You can also export the whole list as a CSV of <code>wa.me</code> links for a BSP or bulk tool.`) +
-  `<div class="kpis">
-    ${kpi({label:'Reachable Accounts', value:O.fmt.n(reach.length), ico:'&#128172;', color:'var(--wa)',
-      bg:'rgba(37,211,102,.13)', sub:`<span>${O.fmt.pct(reach.length/cs.length*100,0)} of the base</span>`,
-      bar:reach.length/cs.length*100})}
-    ${kpi({label:'Reachable Book Value', value:O.fmt.short(reach.reduce((s,c)=>s+O.num(c.total_value),0)), ico:'&#8377;'})}
-    ${kpi({label:'Reachable Upside', value:O.fmt.short(reach.reduce((s,c)=>s+O.num(c.upside),0)), ico:'&#9650;',
-      color:'var(--ok)', bg:'var(--ok-dim)'})}
-    ${kpi({label:'Messages Sent', value:O.fmt.n(O.Tracker.stats().wa), ico:'&#10004;', color:'var(--info)', bg:'var(--info-dim)'})}
-  </div>
-  <div class="grid g2" id="campGrid">
+  `<div class="grid g2" id="campGrid">
     ${presets.map(p=>`<div class="panel"><div class="panel-head">
       <div style="flex:1"><div class="panel-title">${O.esc(p.name)}</div>
         <div class="panel-desc">${O.esc(p.desc)}</div></div></div>
@@ -549,10 +497,10 @@ V.campaign = function(host){
     const p=presets.find(x=>x.id===b.dataset.view);
     O.modal(p.name+' — '+O.fmt.n(p.count)+' accounts',
       `<div class="tbl-wrap" style="max-height:52vh"><table class="dt"><thead><tr>
-        <th>Customer</th><th>Phone</th><th class="num">Value</th><th class="num">Days</th></tr></thead><tbody>
+        <th>Customer</th><th>Phone</th><th>State</th><th class="num">Days</th></tr></thead><tbody>
         ${p.rows.slice(0,300).map(c=>`<tr><td>${O.esc(c.customer_name)}</td>
           <td style="font-family:var(--fm);font-size:11.5px">${O.esc((c.phones||[]).join(', ')||'—')}</td>
-          <td class="num">${O.fmt.short(c.total_value)}</td>
+          <td>${O.esc(c.state||'—')}</td>
           <td class="num">${O.fmt.n(c.days_since)}</td></tr>`).join('')}
       </tbody></table></div>${p.rows.length>300?`<div style="font-size:11.5px;color:var(--tx-3);margin-top:8px">Showing first 300 of ${O.fmt.n(p.rows.length)} — export for the full list.</div>`:''}`,
       [{label:'Close',cls:'ghost',act:()=>O.closeModal()},
@@ -579,104 +527,42 @@ V.module = function(host, id){
 };
 
 function paintModule(host, mod, meta){
-  const rows = mod.rows;
   const has = k => mod.columns.includes(k);
-  const sum = k => rows.reduce((s,r)=>s+O.num(r[k]),0);
-  const withPhone = rows.filter(r=>r.has_phone).length;
   const isAccountSheet = has('customer_name') && has('total_value');
 
-  /* ---- KPIs computed from THIS sheet only ---- */
-  let kpis = '';
-  const hasDays  = has('days_since') && rows.some(r=>r.days_since!=null);
-  const hasState = has('state')       && rows.some(r=>r.state);
-  const hasGroup = has('segment') || (has('verified_business_type') && rows.some(r=>r.verified_business_type));
-  if(isAccountSheet){
-    const tv=sum('total_value'), up=sum('upside'), ords=sum('total_orders');
-    const dayRows = rows.filter(r=>r.days_since!=null);
-    const avgDays = dayRows.length ? dayRows.reduce((s,r)=>s+r.days_since,0)/dayRows.length : null;
-    kpis = `<div class="kpis">
-      ${kpi({label:'Records', value:O.fmt.n(rows.length), ico:meta.code})}
-      ${kpi({label:'Book Value', value:O.fmt.short(tv), ico:'&#8377;',
-        sub:`<span>${O.fmt.n(ords)} orders &middot; AOV ${O.fmt.short(tv/Math.max(1,ords))}</span>`})}
-      ${up?kpi({label:'12M Upside', value:O.fmt.short(up), ico:'&#9650;', color:'var(--ok)', bg:'var(--ok-dim)',
-        sub:`<span>${O.fmt.pct(up/Math.max(1,tv)*100,0)} of this module's value</span>`}):''}
-      ${kpi({label:'Reachable', value:O.fmt.n(withPhone), ico:'&#128222;',
-        color: withPhone===rows.length?'var(--ok)':'var(--wa)', bg:'rgba(37,211,102,.13)',
-        sub:`<span style="color:var(--bad)">${O.fmt.n(rows.length-withPhone)} without a number</span>`,
-        bar: withPhone/Math.max(1,rows.length)*100})}
-      ${avgDays!=null?kpi({label:'Avg Days Since Order', value:Math.round(avgDays)+'d', ico:'&#8987;',
-        color: avgDays>180?'var(--bad)':avgDays>90?'var(--warn)':'var(--ok)',
-        bg: avgDays>180?'var(--bad-dim)':avgDays>90?'var(--warn-dim)':'var(--ok-dim)'}):''}
-      ${kpi({label:'Share Of Total Book', value:O.fmt.pct(tv/O.data.analytics.kpi.total_value*100), ico:'&#9737;',
-        color:'var(--purple)', bg:'rgba(167,139,250,.13)'})}
-    </div>`;
-  } else if(has('combined_value')){
-    kpis = `<div class="kpis">
-      ${kpi({label:'Groups', value:O.fmt.n(rows.length), ico:meta.code})}
-      ${kpi({label:'Records Involved', value:O.fmt.n(sum('records_in_group')), ico:'&#128101;', color:'var(--info)', bg:'var(--info-dim)'})}
-      ${kpi({label:'Combined Value', value:O.fmt.short(sum('combined_value')), ico:'&#8377;'})}
-      ${kpi({label:'Safe To Merge', value:O.fmt.n(rows.filter(r=>/^1\./.test(r.group||'')).length), ico:'&#10004;',
-        color:'var(--ok)', bg:'var(--ok-dim)', sub:'<span>Group 1 only</span>'})}
-    </div>`;
-  } else {
-    kpis = `<div class="kpis">
-      ${kpi({label:'Records', value:O.fmt.n(rows.length), ico:meta.code})}
-      ${kpi({label:'Value Involved', value:O.fmt.short(sum('total_value')), ico:'&#8377;', color:'var(--bad)', bg:'var(--bad-dim)'})}
-      ${kpi({label:'Orders', value:O.fmt.n(sum('total_orders')), ico:'&#128230;'})}
-    </div>`;
-  }
-
-  /* ---- charts for this module ---- */
-  const cPanels = [];
-  if(hasState) cPanels.push(panel('By State','Book value by state','m-state'));
-  if(hasGroup) cPanels.push(panel(has('segment')?'By Segment':'By Business Type','Record mix','m-seg'));
-  if(hasDays)  cPanels.push(panel('Recency Profile','Accounts by days since last order','m-rec'));
-  const charts = cPanels.length ? `<div class="grid ${cPanels.length>2?'g3':'g2'}">${cPanels.join('')}</div>` : '';
+  /* ---- one customer, one row --------------------------------------
+     Sheet 13 lists duplicate groups on purpose, so it is left alone.
+     Everywhere else a mobile number that shows up twice is the same
+     customer twice, and only the richer record is listed.            */
+  const source = mod.rows;
+  const rows = isAccountSheet ? O.dedupeByPhone(source) : source;
+  const merged = source.length - rows.length;
+  /* keep the sidebar badge honest — it should count what is actually listed */
+  if(O.moduleCount[mod.id] !== rows.length){ O.moduleCount[mod.id] = rows.length; O.buildNav && O.buildNav(); }
 
   host.innerHTML = head('Module '+meta.code, meta.title,
     null, `<b>${O.esc(meta.sheet_name)}</b> — ${O.esc(meta.subtitle)}`) +
-    kpis + charts +
     `<div class="panel"><div class="panel-head">
       <div><div class="panel-title">${O.esc(meta.sheet_name)}</div>
-        <div class="panel-desc">All ${O.fmt.n(rows.length)} rows exactly as they appear in the workbook</div></div>
+        <div class="panel-desc">${O.fmt.n(rows.length)} rows from the workbook${
+          merged?` &middot; ${O.fmt.n(merged)} duplicate ${merged===1?'record':'records'} hidden (same mobile number)`:''}</div></div>
       <div class="panel-tools">
         ${isAccountSheet?`<button class="btn sm wa" id="mBulk">&#128172; Bulk WhatsApp</button>`:''}
         <button class="btn sm" id="mCols">&#9776; Columns</button>
       </div></div>
       <div class="panel-body flush" id="mGrid"></div></div>`;
 
-  if(hasState){
-    const st={}; rows.forEach(r=>{const k=r.state||'Unspecified'; st[k]=st[k]||{v:0,n:0};
-      st[k].v+=O.num(r.total_value); st[k].n++;});
-    Ch().hbars(O.$('#m-state'), Object.entries(st).map(([k,v])=>({key:k,value:v.v,count:v.n}))
-      .sort((a,b)=>b.value-a.value), {limit:8});
-  }
-  if(hasGroup){
-    const gk = mod.columns.includes('segment') ? 'seg_label' : 'verified_business_type';
-    const sg={}; rows.forEach(r=>{ const k=(r[gk]||'Unspecified'); const kk=k.length>30?k.slice(0,30)+'…':k;
-      sg[kk]=sg[kk]||{v:0,n:0}; sg[kk].v+=O.num(r.total_value); sg[kk].n++; });
-    const sgArr=Object.entries(sg).map(([k,v],i)=>({key:k,value:v.n,count:v.n,color:O.color(i)}))
-      .sort((a,b)=>b.value-a.value).slice(0,8);
-    Ch().donut(O.$('#m-seg'), sgArr, {size:158, format:v=>O.fmt.n(v),
-      centerValue:O.fmt.n(rows.length), centerLabel:'RECORDS'});
-  }
-  if(hasDays){
-    const bk=[['0-30',0,30],['31-90',31,90],['91-180',91,180],['181-365',181,365],['365+',366,1e9]];
-    Ch().bars(O.$('#m-rec'), bk.map(([l,lo,hi],i)=>({key:l,label:l,
-      value:rows.filter(r=>O.num(r.days_since)>=lo&&O.num(r.days_since)<=hi).length,
-      color:['var(--ok)','var(--info)','var(--warn)','var(--bad)','var(--bad)'][i]})),
-      {height:180, format:v=>Math.round(v), vLabel:'Accounts:'});
-  }
-
   /* ---- column selection: show the meaningful ones first, all available ---- */
   const PRIMARY = ['sr_no','customer_name','group','sr_nos','records','records_in_group','state','states',
-    'seg_label','verified_business_type','total_orders','total_value','aov','combined_value',
-    'last_order','days_since','recommended_action','phone','confidence','upside','quality_flag',
+    'seg_label','verified_business_type','total_orders','combined_value',
+    'days_since','recommended_action','phone','confidence','upside','quality_flag',
     'gstin','evidence'];
   const visible = mod.columns.filter(c=>PRIMARY.includes(c) ||
     (c==='segment' && !mod.columns.includes('seg_label')));
   const ordered = PRIMARY.filter(c=>visible.includes(c));
-  const extra = mod.columns.filter(c=>!ordered.includes(c) && c!=='segment' && c!=='phone_on_file');
+  /* Total Value, AOV and Last Order are never offered here — they belong
+     to the customer detail panel now. */
+  const pickable = mod.columns.filter(c=>c!=='phone_on_file' && !O.HIDDEN_COLS.has(c));
 
   const filters=[];
   if(mod.columns.includes('state')) filters.push({key:'state',label:'State'});
@@ -695,12 +581,13 @@ function paintModule(host, mod, meta){
 
   O.$('#mCols').addEventListener('click',()=>{
     O.modal('Show / hide columns',
-      `<div class="chips" id="colChips">${mod.columns.filter(c=>c!=='phone_on_file').map(c=>
+      `<div class="chips" id="colChips">${pickable.map(c=>
         `<span class="chip${cols.includes(c)?' on':''}" data-c="${c}">${O.esc(O.gridLabel(c))}</span>`).join('')}</div>
        <div style="font-size:11.5px;color:var(--tx-3);margin-top:12px">
          ${O.fmt.n(mod.columns.length)} columns exist in this sheet. Long text columns
-         (pitch angle, gap reason, what they do) are hidden by default to keep the table readable —
-         they are always visible in a record's detail panel.</div>`,
+         (pitch angle, gap reason, what they do) stay out of the table to keep it readable, and
+         Total Value, AOV and Last Order now live in the customer detail panel —
+         click any customer to see them.</div>`,
       [{label:'Close',cls:'ghost',act:()=>O.closeModal()},
        {label:'Apply',cls:'primary',act:()=>{
          cols = O.$$('#colChips .chip.on').map(e=>e.dataset.c);

@@ -121,6 +121,54 @@ O.csv = {
   }
 };
 
+/* ---------- Duplicate suppression by mobile number ----------------
+   The workbook carries the same buyer more than once (spelling variants,
+   a second Sr. No., a firm and its proprietor). The phone number is the
+   only hard identifier in the file, so two records that share a mobile
+   are treated as one customer and only the richer record is listed.
+   Sheet 13 (DUPLICATES & SHARED PHONES) is never de-duplicated — showing
+   the duplicates IS that sheet's job.                                  */
+O.phoneKeys = rec => {
+  const out = [];
+  (rec && rec.phones || []).forEach(p=>{
+    const d = String(p||'').replace(/\D/g,'');
+    if(d.length >= 10) out.push(d.slice(-10));
+  });
+  return out;
+};
+/* Richer = more billed value, then more orders, then a more recent order. */
+function richer(a, b){
+  const d = O.num(b.total_value) - O.num(a.total_value); if(d) return d;
+  const o = O.num(b.total_orders) - O.num(a.total_orders); if(o) return o;
+  return String(b.last_order||'').localeCompare(String(a.last_order||''));
+}
+O.dedupeByPhone = function(rows){
+  rows = rows || [];
+  const keys = rows.map(O.phoneKeys);
+
+  /* Union-find so a chain still collapses to one customer: if record A
+     shares one number with B and another with C, A, B and C are one. */
+  const parent = rows.map((_,i)=>i);
+  const find = i => { while(parent[i]!==i){ parent[i]=parent[parent[i]]; i=parent[i]; } return i; };
+  const union = (a,b)=>{ a=find(a); b=find(b); if(a!==b) parent[b]=a; };
+  const owner = new Map();
+  keys.forEach((ks,i)=> ks.forEach(k=>{
+    if(owner.has(k)) union(owner.get(k), i); else owner.set(k, i);
+  }));
+
+  /* One survivor per group — the record carrying the most business. */
+  const survivor = new Map();
+  rows.forEach((r,i)=>{
+    if(!keys[i].length) return;            // no number — nothing to match on
+    const g = find(i), cur = survivor.get(g);
+    if(cur===undefined || richer(r, rows[cur]) < 0) survivor.set(g, i);
+  });
+
+  const kept = rows.filter((r,i)=> !keys[i].length || survivor.get(find(i))===i);
+  kept.removed = rows.length - kept.length;
+  return kept;
+};
+
 /* ---------- Sorting / filtering helpers ---------- */
 O.sortBy = (arr, key, dir) => {
   const d = dir==='asc' ? 1 : -1;

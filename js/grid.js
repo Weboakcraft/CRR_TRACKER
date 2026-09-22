@@ -25,6 +25,12 @@ const WIDE   = new Set(['gap_reason','pitch_angle','what_they_do','evidence','ad
 
 O.gridLabel = k => LBL[k] || k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 
+/* Columns deliberately kept out of every section's table. They are
+   per-customer figures, not list-scanning figures, so they live in the
+   customer detail panel (click any customer) instead of the grid.      */
+O.HIDDEN_COLS = new Set(['total_value','aov','last_order']);
+O.visibleCols = cols => (cols||[]).filter(k=>!O.HIDDEN_COLS.has(k));
+
 function renderCell(key, rec){
   const v = rec[key];
   if(key==='customer_name')
@@ -69,8 +75,8 @@ function renderCell(key, rec){
 /* ---------------- Grid component ---------------- */
 O.Grid = function(opts){
   const st = {
-    rows: opts.rows||[], cols: opts.cols||[], q:'', filters:{},
-    sort: opts.sort || (opts.cols.some(c=>c==='total_value') ? 'total_value':null),
+    rows: opts.rows||[], cols: O.visibleCols(opts.cols), q:'', filters:{},
+    sort: opts.sort || ((opts.cols||[]).some(c=>c==='total_value') ? 'total_value':null),
     dir: opts.dir||'desc', page:1, size: opts.pageSize || (O.CONFIG.pageSize||50),
     onOpen: opts.onOpen
   };

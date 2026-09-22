@@ -61,7 +61,7 @@ O.openCustomer = function(rec){
     <div class="dr-sec"><div class="dr-grid">
       <div class="dr-stat"><b>${money(c.total_value)}</b><span>Total Value</span></div>
       <div class="dr-stat"><b>${O.fmt.n(c.total_orders)}</b><span>Orders</span></div>
-      <div class="dr-stat"><b>${money(c.aov)}</b><span>Avg Order</span></div>
+      <div class="dr-stat"><b>${money(c.aov)}</b><span>AOV</span></div>
       <div class="dr-stat"><b style="color:var(--ok)">${money(c.upside)}</b><span>12M Upside</span></div>
       <div class="dr-stat"><b style="color:${O.riskColor(c.risk_band)}">${O.fmt.n(c.days_since)}d</b><span>Since Last Order</span></div>
       <div class="dr-stat"><b style="color:var(--bad)">${money(c.value_at_risk)}</b><span>Value At Risk</span></div>
@@ -86,7 +86,11 @@ O.openCustomer = function(rec){
         ${kv('Business Type', O.esc(c.verified_business_type||''))}
         ${kv('Trade Evidence', O.esc(c.trade_evidence||''))}
         ${kv('State', O.esc(c.state||''))}
-        ${kv('Last Order', c.last_order?O.fmt.date(c.last_order):'')}
+        ${kv('Total Value', money(c.total_value))}
+        ${kv('AOV (Average Order Value)', money(c.aov))}
+        ${kv('Last Order', c.last_order
+            ? O.fmt.date(c.last_order) + (c.days_since!=null?` <span class="tag mut">${O.fmt.n(c.days_since)} days ago</span>`:'')
+            : '<span class="tag mut">No order date on file</span>')}
         ${kv('Phone(s)', (c.phones||[]).length
             ? c.phones.map(p=>`<a href="tel:+${O.wa.normalize(p)}" style="color:var(--info);font-family:var(--fm)">${O.esc(p)}</a>`).join(' &nbsp;')
             : '<span class="tag bad">No phone on file — trace via GST portal / IndiaMART / invoice</span>')}
@@ -159,7 +163,9 @@ function navGroups(){
       {id:'campaign',  ico:'&#128172;', label:'WhatsApp Campaigns'}
     ]},
     {title:'Modules — one per Excel sheet', items: m.modules.map(mod=>({
-      id:'m:'+mod.id, ico:mod.code, label: modShort(mod.title), badge: mod.row_count,
+      id:'m:'+mod.id, ico:mod.code, label: modShort(mod.title),
+      /* once a module has been opened we know how many rows survive de-duplication */
+      badge: O.moduleCount[mod.id] != null ? O.moduleCount[mod.id] : mod.row_count,
       full: mod.code+' '+mod.title }))}
   ];
 }
@@ -178,6 +184,8 @@ O.priorityCount = function(){
   return cs.filter(c=>/CALL NOW/i.test(c.recommended_action||'')).length;
 };
 
+/* rows actually listed per module, filled in as each module is opened */
+O.moduleCount = {};
 function buildNav(){
   const nav=O.$('#nav'); nav.innerHTML='';
   navGroups().forEach(g=>{
@@ -192,6 +200,7 @@ function buildNav(){
     });
   });
 }
+O.buildNav = buildNav;
 O.routeKey = ()=> O.route.page==='module' ? 'm:'+O.route.param : O.route.page;
 
 O.go = function(key){
