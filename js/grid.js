@@ -15,13 +15,21 @@ const LBL = {
   group:'Group', sr_nos:'Sr. Nos.', records:'Records', records_in_group:'# In Group',
   combined_value:'Combined Value', states:'State(s)', gstins:'GSTIN(s)',
   evidence:'Evidence / What To Do',
-  churn_risk:'Risk %', risk_band:'Risk', abc:'ABC', rfm:'RFM', value_at_risk:'Value At Risk'
+  churn_risk:'Risk %', risk_band:'Risk', abc:'ABC', rfm:'RFM', value_at_risk:'Value At Risk',
+  /* follow-up board */
+  due:'Due', due_label:'When', due_in:'Days', promised_day:'Promised On', agent:'Agent',
+  outcome:'Outcome', outcome_note:'Outcome Note', note:'Note', value:'Expected Value',
+  closed_at:'Closed', rescheduled_to:'Rescheduled To', when:'When', synced:'Sync',
+  disposition:'Last Outcome', type:'Type',
+  seq:'#', id:'Entry ID', record:'Record', followup:'Follow-up', voided_by:'Voided By',
+  void_reason:'Void Reason'
 };
-const NUMCOL = new Set(['sr_no','total_orders','total_value','aov','days_since','upside',
-  'combined_value','records_in_group','churn_risk','value_at_risk','cum_share']);
-const MONEY  = new Set(['total_value','aov','upside','combined_value','value_at_risk']);
+const NUMCOL = new Set(['seq','sr_no','total_orders','total_value','aov','days_since','upside',
+  'combined_value','records_in_group','churn_risk','value_at_risk','cum_share','value','due_in']);
+const MONEY  = new Set(['total_value','aov','upside','combined_value','value_at_risk','value']);
 const WIDE   = new Set(['gap_reason','pitch_angle','what_they_do','evidence','address',
-  'verified_business_type','trade_evidence','records','quality_flag','segment','source_url']);
+  'verified_business_type','trade_evidence','records','quality_flag','segment','source_url',
+  'note','outcome_note']);
 
 O.gridLabel = k => LBL[k] || k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 
@@ -52,7 +60,25 @@ function renderCell(key, rec){
     const t = code==='A'?'ok':code==='B'?'warn':code==='E'?'bad':code==='C'?'mut':'info';
     return `<span class="tag ${t}" title="${O.esc(v)}">${O.esc(lb)}</span>`;
   }
-  if(key==='last_order') return v?O.fmt.dateShort(v):'—';
+  if(key==='last_order'||key==='promised_day'||key==='rescheduled_to')
+    return v?O.fmt.dateShort(v):'—';
+  if(key==='due'){
+    if(!v) return '—';
+    const n = rec.due_in;
+    const t = n==null?'mut' : n<0?'bad' : n===0?'warn' : n===1?'info' : 'mut';
+    return `<span class="tag ${t}" title="${O.esc(O.dueLabel(n))}">${O.fmt.dateShort(v)}</span>`;
+  }
+  if(key==='due_label'){
+    const n = rec.due_in;
+    const c = n==null?'var(--tx-3)' : n<0?'var(--bad)' : n===0?'var(--warn)' : n===1?'var(--info)':'var(--tx-2)';
+    return `<span style="color:${c};font-weight:650">${O.esc(rec.due_label||O.dueLabel(n))}</span>`;
+  }
+  if(key==='record'){
+    const t = v==='Voided'?'bad' : v==='Void marker'?'warn' : v==='Follow-up outcome'?'info':'mut';
+    return `<span class="tag ${t}"${rec.void_reason?` title="${O.esc(rec.void_reason)}"`:''}>${O.esc(v||'Original')}</span>`;
+  }
+  if(key==='followup') return v?`<span class="tag mut">${O.fmt.dateShort(v)}</span>`:'—';
+  if(key==='outcome') return v?`<span class="tag ${O.CONFIG.positiveDispositions.includes(v)?'ok':'mut'}">${O.esc(v)}</span>`:'—';
   if(key==='days_since') {
     if(v==null) return '—';
     const c = v>365?'var(--bad)':v>180?'var(--warn)':v>90?'var(--info)':'var(--ok)';
@@ -154,6 +180,10 @@ O.Grid = function(opts){
       h += `<tr data-i="${idx}"${!r.has_phone && r.customer_name?' class="no-phone"':''}>`;
       st.cols.forEach(k=> h += `<td class="${NUMCOL.has(k)?'num':''}">${renderCell(k,r)}</td>`);
       h += `<td class="num"><div class="rowact">`;
+      (opts.extraActions||[]).forEach(ea=>{
+        if(ea.show && !ea.show(r)) return;
+        h += `<button class="ra ${ea.cls||''}" data-act="${ea.act}" title="${O.esc(ea.title||'')}">${ea.icon}</button>`;
+      });
       if(r.phones && r.phones.length)
         h += `<button class="ra wa" data-act="wa" title="WhatsApp ${O.esc(r.phones[0])}">&#128172;</button>`+
              `<button class="ra call" data-act="tel" title="Call ${O.esc(r.phones[0])}">&#128222;</button>`;
@@ -179,6 +209,7 @@ O.Grid = function(opts){
         else if(act==='tel'){ e.stopPropagation(); location.href='tel:+'+O.wa.normalize(rec.phones[0]); }
         else if(act==='log'){ e.stopPropagation(); O.Tracker.openLog(rec); }
         else if(act==='open'){ e.stopPropagation(); (st.onOpen||O.openCustomer)(rec); }
+        else if(act && opts.onAction){ e.stopPropagation(); opts.onAction(act, rec); }
       });
     });
 

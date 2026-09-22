@@ -29,6 +29,24 @@ O.fmt = {
   days(v){ if(v==null)return '—'; v=Math.round(v);
     if(v>=365) return (v/365).toFixed(1)+'y'; if(v>=30) return Math.round(v/30)+'mo'; return v+'d'; }
 };
+/* ---------- Calendar dates (LOCAL, never UTC) ---------------------
+   A follow-up promised "today" must mean today in the office, not in
+   UTC — toISOString() would roll the date back before 05:30 IST.     */
+const pad2 = n => String(n).padStart(2,'0');
+O.dateKey = d => d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+O.today = () => O.dateKey(new Date());
+O.dateAdd = (key, days) => { const [y,m,d]=String(key).split('-').map(Number);
+  const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()+days); return O.dateKey(dt); };
+/* whole days from a -> b; negative means b is in the past */
+O.dayDiff = (a, b) => {
+  const p=k=>{ const [y,m,d]=String(k).split('-').map(Number); return new Date(y,m-1,d).getTime(); };
+  if(!a||!b) return null;
+  return Math.round((p(b)-p(a))/86400000);
+};
+/* "3 days overdue" / "in 2 days" / "today" */
+O.dueLabel = n => n==null ? '—' : n===0 ? 'Today' : n===1 ? 'Tomorrow' : n===-1 ? '1 day late'
+  : n<0 ? (-n)+' days late' : 'in '+n+' days';
+
 O.esc = s => String(s==null?'':s).replace(/[&<>"']/g,
   c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 O.num = v => (typeof v==='number' && !isNaN(v)) ? v : 0;
@@ -113,12 +131,15 @@ O.csv = {
     }).join(',')).join('\n');
     return head+'\n'+body;
   },
-  download(name, text){
-    const blob = new Blob(['﻿'+text], {type:'text/csv;charset=utf-8;'});
-    const a = O.el('a',{href:URL.createObjectURL(blob), download:name});
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },300);
-  }
+  download(name, text){ O.download(name, '﻿'+text, 'text/csv;charset=utf-8;'); }
+};
+
+/* Generic file download — CSV gets a BOM for Excel, JSON must not. */
+O.download = (name, text, mime) => {
+  const blob = new Blob([text], {type: mime || 'application/octet-stream'});
+  const a = O.el('a',{href:URL.createObjectURL(blob), download:name});
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },300);
 };
 
 /* ---------- Duplicate suppression by mobile number ----------------

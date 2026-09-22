@@ -2,33 +2,203 @@
 (function(O){
 'use strict';
 const C=()=>O.CONFIG;
+let FU = null;   // memoised follow-up model
 
-/* ---------------- Activity store (local-first, Sheets-synced) ------------- */
+/* ---------------- Activity store — APPEND ONLY ----------------------------
+   Nothing in here ever deletes an activity. A mistake is corrected by
+   appending a record that points back at the old one, so the whole history
+   — including the corrections — stays readable and auditable forever.
+   The list is held in memory and written through, so a render that asks
+   for it twenty times parses localStorage once.                          */
+const KEY = 'activities';
+let CACHE = null;      // parsed activity list
+let STAMP = 0;         // bumped on every write — views memoise against it
+let MAXSEQ = null;
+
+function readAll(){
+  if(CACHE) return CACHE;
+  const raw = O.store.get(KEY, []);
+  CACHE = Array.isArray(raw) ? raw : [];
+  return CACHE;
+}
+/* A failed write means the browser refused to keep the record. That must
+   never pass quietly — the operator is told and handed the file. */
+function writeAll(list){
+  CACHE = list; STAMP++;
+  if(O.store.set(KEY, list)) return true;
+  O.toast('Browser storage is full — your log could NOT be saved. Downloading a backup now.','err',9000);
+  try{ O.download('oakcraft-activity-EMERGENCY-BACKUP.json', JSON.stringify(list,null,1), 'application/json'); }catch(e){}
+  return false;
+}
+function newId(){ return 'A'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function nextSeq(list){
+  if(MAXSEQ==null) MAXSEQ = list.reduce((m,x)=>Math.max(m, O.num(x.seq)), 0);
+  return ++MAXSEQ;
+}
+
 const T = O.Tracker = {
-  all(){ return O.store.get('activities', []); },
-  forCustomer(name){ return this.all().filter(a=>a.customer_name===name)
+  /* every record ever written, oldest first */
+  all(){ return readAll(); },
+  /* what the log shows by default — voided entries stay on record but are
+     folded out of the working views unless explicitly asked for */
+  live(){ return readAll().filter(a=>!a.voided && a.type!=='void'); },
+  stamp(){ return STAMP; },
+  forCustomer(name){ return readAll().filter(a=>a.customer_name===name)
     .sort((a,b)=> b.ts.localeCompare(a.ts)); },
+
   add(a){
-    const list=this.all();
-    a.id = a.id || ('A'+Date.now().toString(36)+Math.random().toString(36).slice(2,6));
+    const list = readAll().slice();
+    a.id = a.id || newId();
+    a.seq = nextSeq(list);
     a.ts = a.ts || new Date().toISOString();
+    a.created_at = a.created_at || a.ts;
+    a.day = a.day || O.dateKey(new Date(a.ts));
     a.agent = a.agent || O.store.get('agent', C().defaultAgent);
     a.synced = false;
-    list.push(a); O.store.set('activities', list);
+    list.push(a); writeAll(list);
     this.push(a);
     return a;
   },
-  remove(id){ O.store.set('activities', this.all().filter(a=>a.id!==id)); },
+
+  /* Corrections are appends, not deletions. The original record keeps its
+     place in the timeline and is marked, and a void entry is appended
+     alongside it so the correction itself is on record too. */
+  void(id, reason){
+    const list = readAll().slice();
+    const i = list.findIndex(x=>x.id===id);
+    if(i<0) return null;
+    list[i] = Object.assign({}, list[i], {
+      voided:true, voided_at:new Date().toISOString(),
+      voided_by:O.store.get('agent', C().defaultAgent), void_reason:reason||'' });
+    writeAll(list);
+    return this.add({ customer_name:list[i].customer_name, sr_no:list[i].sr_no,
+      type:'void', voids:id, disposition:'Entry Voided', note:reason||'' });
+  },
+  /* kept so no caller can hard-delete by habit — it voids instead */
+  remove(id, reason){ return this.void(id, reason || 'Removed from the log'); },
+
+  /* ---- Follow-ups -------------------------------------------------------
+     A follow-up is born when an activity carries a `followup` date, and it
+     is closed by a LATER activity pointing back at it with `closes`.
+     Rescheduling closes one and opens the next, so the whole promise chain
+     survives. Derived in a single pass and memoised against the write
+     stamp, so switching tabs costs nothing.                              */
+  followups(){
+    if(FU && FU.stamp===STAMP) return FU;
+    const acts = readAll();
+    const today = O.today();
+
+    const closedBy = new Map();
+    acts.forEach(a=>{ if(a.closes) closedBy.set(a.closes, a); });
+
+    const ix = O.customerIndex ? O.customerIndex() : null;
+    const all = [];
+    acts.forEach(a=>{
+      if(!a.followup || a.voided) return;
+      const close = closedBy.get(a.id) || null;
+      const cust = ix ? (a.sr_no!=null && ix.bySr.get(a.sr_no)) || ix.byName.get(a.customer_name) : null;
+      const diff = O.dayDiff(today, a.followup);
+      all.push({
+        id: a.id, source: a,
+        customer_name: a.customer_name, sr_no: a.sr_no,
+        due: a.followup, due_in: diff, due_label: O.dueLabel(diff),
+        promised_on: a.ts, promised_day: a.day || a.ts.slice(0,10),
+        agent: a.agent, disposition: a.disposition, note: a.note,
+        value: O.num(a.value), type: a.type,
+        phone: a.phone, phones: cust ? (cust.phones||[]) : (a.phone?[a.phone]:[]),
+        has_phone: !!(cust ? (cust.phones||[]).length : a.phone),
+        state: a.state || (cust?cust.state:'') || '',
+        segment: a.segment || (cust?cust.seg_label:'') || '',
+        seg_label: a.segment || (cust?cust.seg_label:'') || '',
+        seg_code: cust?cust.seg_code:'',
+        total_value: O.num(a.total_value || (cust?cust.total_value:0)),
+        upside: cust?O.num(cust.upside):0,
+        recommended_action: cust?cust.recommended_action:'',
+        done: !!close, closed_at: close?close.ts:null,
+        outcome: close?(close.disposition||close.type||''):'',
+        outcome_note: close?(close.note||''):'',
+        rescheduled_to: close?(close.followup||''):''
+      });
+    });
+
+    /* newest promise per customer wins; older open ones are superseded but
+       still listed under their own tab — a promise is never erased */
+    const newest = new Map();
+    all.forEach(f=>{ if(f.done) return;
+      const cur = newest.get(f.customer_name);
+      if(!cur || f.promised_on > cur.promised_on) newest.set(f.customer_name, f); });
+    all.forEach(f=>{ f.superseded = !f.done && newest.get(f.customer_name) !== f; });
+
+    const bucket = f => f.done ? 'done' : f.superseded ? 'superseded'
+      : f.due_in < 0 ? 'overdue' : f.due_in === 0 ? 'today' : f.due_in === 1 ? 'tomorrow'
+      : f.due_in <= 7 ? 'week' : 'later';
+    all.forEach(f=>{ f.bucket = bucket(f); });
+
+    const by = k => all.filter(f=>f.bucket===k);
+    FU = { stamp:STAMP, all,
+      overdue:by('overdue'), today:by('today'), tomorrow:by('tomorrow'),
+      week:by('week'), later:by('later'), done:by('done'), superseded:by('superseded') };
+    FU.open = FU.overdue.concat(FU.today, FU.tomorrow, FU.week, FU.later);
+    FU.dueNow = FU.overdue.concat(FU.today);
+    return FU;
+  },
+  dueNowCount(){ return this.followups().dueNow.length; },
+
+  /* Closing a follow-up appends the outcome — the promise itself is never
+     edited. Passing a next date opens the next link in the chain. */
+  closeFollowup(fuId, out){
+    const f = this.followups().all.find(x=>x.id===fuId);
+    if(!f) return null;
+    return this.add({
+      customer_name: f.customer_name, sr_no: f.sr_no,
+      type: out.type || 'followup', closes: fuId,
+      disposition: out.disposition || 'Connected — Follow-up',
+      phone: out.phone || f.phone || '',
+      value: O.num(out.value), followup: out.next || '',
+      note: out.note || '', state: f.state, segment: f.segment,
+      total_value: f.total_value });
+  },
+
+  /* ---- Backup / restore — history outlives this browser ---- */
+  backup(){
+    const list = readAll();
+    O.download('oakcraft-activity-history-'+O.today()+'.json',
+      JSON.stringify({app:'oakcraft-crr-tracker', exported_at:new Date().toISOString(),
+        count:list.length, activities:list}, null, 1), 'application/json');
+    O.toast(`Backed up all ${list.length} activities`);
+  },
+  /* merge only — an existing id is never overwritten and never dropped */
+  restore(json){
+    let rows;
+    try{ const d=JSON.parse(json); rows = Array.isArray(d)?d:d.activities; }
+    catch(e){ O.toast('That file is not a valid backup','err'); return 0; }
+    if(!Array.isArray(rows)){ O.toast('No activities found in that file','err'); return 0; }
+    const list = readAll().slice(), have = new Set(list.map(a=>a.id));
+    let added = 0;
+    rows.forEach(r=>{ if(r && r.id && !have.has(r.id)){ list.push(r); have.add(r.id); added++; } });
+    if(added){ MAXSEQ = null; list.sort((a,b)=>String(a.ts||'').localeCompare(String(b.ts||''))); writeAll(list); }
+    O.toast(added?`Restored ${added} activities (${rows.length-added} already on record)`
+                 :'Nothing new — every activity in that file is already here');
+    return added;
+  },
+
   stats(){
-    const a=this.all(), today=new Date().toISOString().slice(0,10);
+    const a=this.live(), today=O.today();
     const pos=C().positiveDispositions;
+    const fu=this.followups();
     return {
       total:a.length,
-      today:a.filter(x=>x.ts.slice(0,10)===today).length,
+      allRecords:readAll().length,
+      voided:readAll().filter(x=>x.voided).length,
+      today:a.filter(x=>(x.day||x.ts.slice(0,10))===today).length,
       connected:a.filter(x=>/^Connected/.test(x.disposition||'')).length,
       positive:a.filter(x=>pos.includes(x.disposition)).length,
       wa:a.filter(x=>x.type==='whatsapp').length,
-      followups:a.filter(x=>x.followup && x.followup>=today).length,
+      followups:fu.open.length,
+      dueNow:fu.dueNow.length,
+      overdue:fu.overdue.length,
+      dueToday:fu.today.length,
+      doneFollowups:fu.done.length,
       pipeline:a.reduce((s,x)=>s+O.num(x.value),0),
       unsynced:a.filter(x=>!x.synced).length
     };
@@ -44,8 +214,8 @@ const T = O.Tracker = {
       body: JSON.stringify({action:'log', key:C().apiKey, payload:act})
     }).then(r=>r.json()).then(res=>{
       if(res && res.ok){
-        const list=this.all(); const i=list.findIndex(x=>x.id===act.id);
-        if(i>-1){ list[i].synced=true; O.store.set('activities',list); }
+        const list=readAll().slice(); const i=list.findIndex(x=>x.id===act.id);
+        if(i>-1){ list[i]=Object.assign({},list[i],{synced:true}); writeAll(list); }
         O.setSync('on','Synced to Google Sheets');
       }
       return res;
@@ -60,9 +230,9 @@ const T = O.Tracker = {
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       body:JSON.stringify({action:'bulk',key:C().apiKey,payload:pend})})
       .then(r=>r.json()).then(res=>{
-        if(res&&res.ok){ const list=this.all();
-          list.forEach(a=>{ if(pend.some(p=>p.id===a.id)) a.synced=true; });
-          O.store.set('activities',list);
+        if(res&&res.ok){ const ids=new Set(pend.map(p=>p.id));
+          const list=readAll().map(a=> ids.has(a.id)?Object.assign({},a,{synced:true}):a );
+          writeAll(list);
           O.toast(`${pend.length} activities pushed to Google Sheets`); O.setSync('on','Synced');
           O.render();
         } else O.toast('Sync failed: '+(res.error||'unknown'),'err',4000);
@@ -74,10 +244,10 @@ const T = O.Tracker = {
     return fetch(C().apiUrl+'?action=list&key='+encodeURIComponent(C().apiKey))
       .then(r=>r.json()).then(res=>{
         if(!res||!res.ok||!Array.isArray(res.rows)) return;
-        const local=this.all(), ids=new Set(local.map(a=>a.id));
+        const local=readAll().slice(), ids=new Set(local.map(a=>a.id));
         let added=0;
         res.rows.forEach(r=>{ if(r.id && !ids.has(r.id)){ r.synced=true; local.push(r); added++; } });
-        if(added){ O.store.set('activities',local); O.toast(`Pulled ${added} activities from Google Sheets`); }
+        if(added){ MAXSEQ=null; writeAll(local); O.toast(`Pulled ${added} activities from Google Sheets`); }
         O.setSync('on','Connected to Google Sheets');
       }).catch(()=>O.setSync('off','Offline — local storage only'));
   },

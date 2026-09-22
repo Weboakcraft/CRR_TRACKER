@@ -60,10 +60,39 @@ concentration-risk analysis.
 book value (25%) + upside × churn-risk, multiplied by phone reachability, the
 recommended action, and research confidence.
 
+**Follow-Ups** — a board of every promise the team has made, derived straight from
+the activity log. **Today's follow-ups open automatically.** Tabs for Overdue, Today,
+Tomorrow, Next 7 Days, Later, Completed, Superseded and Everything, each with a live
+count. Close a follow-up with its outcome, or reschedule it in one click (Tomorrow /
+3 days / a week / 2 weeks). Rescheduling closes one promise and opens the next, so
+the whole chain — including the fact that it slipped — stays on record. The model is
+derived in a single pass and memoised against the write stamp, so switching tabs is
+free even with thousands of activities.
+
 **Call Tracker** — log calls, WhatsApp, visits, emails and quotations with
-disposition, expected value, follow-up date and notes. Overdue and upcoming
-follow-ups, full searchable log, CSV export. Saves instantly in the browser and
-pushes to Google Sheets.
+disposition, expected value, follow-up date and notes. The log is the audit trail:
+every record, in sequence, including voided ones. Searchable, filterable by record
+type, CSV export with the full audit columns, JSON backup and restore. Saves
+instantly in the browser and pushes to Google Sheets.
+
+### History is append-only
+
+Nothing in the tracker is ever deleted or overwritten.
+
+- Every activity gets a gapless sequence number, an id, and a created-at stamp.
+- A correction does not edit the original. The original is flagged and a **void
+  entry is appended beside it**, carrying the reason and who did it — both stay in
+  the log and in the CSV export.
+- `Tracker.remove()` no longer deletes; it voids. There is no code path left that
+  drops an activity.
+- The destructive *Clear Local Log* button is gone, replaced by **Backup JSON** and
+  **Restore**. Restore merges by id: it never overwrites an existing record and never
+  drops one, so importing the same file twice is a no-op.
+- If browser storage is full, the write failure is surfaced loudly and a backup file
+  is downloaded immediately rather than losing the entry in silence.
+- The Google Sheets backend appends too, and now carries the audit columns (Seq,
+  Closes Follow-up, Voids Entry, Voided, Void Reason, Voided By). An existing Log
+  sheet from an older version is widened in place — only the header row is touched.
 
 **WhatsApp** — a WhatsApp button on every row, in every module and in the customer
 drawer. Six message templates with placeholders filled from each customer's real data

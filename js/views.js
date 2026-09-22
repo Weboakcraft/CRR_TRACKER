@@ -348,85 +348,215 @@ V.queue = function(host){
 };
 
 /* ==================================================================
+   3b. FOLLOW-UP BOARD — today's promises, front and centre
+   ================================================================== */
+const FU_TABS = [
+  {k:'today',      label:'Today',      tone:'warn', desc:"Promised for today — work these first."},
+  {k:'overdue',    label:'Overdue',    tone:'bad',  desc:'Past the date you promised. Every day here costs trust.'},
+  {k:'tomorrow',   label:'Tomorrow',   tone:'info', desc:'Lined up for tomorrow.'},
+  {k:'week',       label:'Next 7 Days',tone:'mut',  desc:'Due within the week.'},
+  {k:'later',      label:'Later',      tone:'mut',  desc:'Dated further out.'},
+  {k:'done',       label:'Completed',  tone:'ok',   desc:'Closed follow-ups — kept on record with their outcome.'},
+  {k:'superseded', label:'Superseded', tone:'mut',  desc:'A newer promise replaced these. Nothing is deleted, so they stay visible here.'},
+  {k:'all',        label:'Everything', tone:'mut',  desc:'Every follow-up ever set, in any state.'}
+];
+
+V.followups = function(host){
+  const T = O.Tracker, F = T.followups();
+  const tab = O.fuTab && FU_TABS.some(t=>t.k===O.fuTab) ? O.fuTab : 'today';
+  const meta = FU_TABS.find(t=>t.k===tab);
+  const rows = tab==='all' ? F.all : F[tab];
+  const count = k => (k==='all' ? F.all : F[k]).length;
+
+  const pipeline = rows.reduce((s,f)=>s+O.num(f.value),0);
+
+  host.innerHTML = head('Execution','Follow-Ups',
+    `Every promise your team made, derived straight from the activity log. Today's follow-ups open here automatically — ${
+      F.today.length? `${O.fmt.n(F.today.length)} due today` : 'nothing is due today'}${
+      F.overdue.length? `, ${O.fmt.n(F.overdue.length)} still overdue` : ''}.`,
+    F.overdue.length
+      ? `<b style="color:var(--bad)">&#9888; ${O.fmt.n(F.overdue.length)} follow-up${F.overdue.length===1?' is':'s are'} past the promised date.</b>
+         Closing one never deletes it — the outcome is appended and the whole chain stays on record.`
+      : `<b>Closing a follow-up never deletes it.</b> The outcome is appended to the log and the original promise stays on record, so the full history is always auditable.`) +
+  `<div class="chips" id="fuTabs" style="margin-bottom:14px">
+    ${FU_TABS.map(t=>`<span class="chip${t.k===tab?' on':''}" data-t="${t.k}">${t.label}
+      <b style="margin-left:6px;opacity:.8">${O.fmt.n(count(t.k))}</b></span>`).join('')}
+  </div>
+  <div class="panel">
+    <div class="panel-head">
+      <div><div class="panel-title">${meta.label}${rows.length?` — ${O.fmt.n(rows.length)}`:''}</div>
+        <div class="panel-desc">${O.esc(meta.desc)}${
+          pipeline?` &middot; ${O.fmt.short(pipeline)} of expected value riding on them`:''}</div></div>
+      <div class="panel-tools">
+        ${rows.length && tab!=='done' ? `<button class="btn sm wa" id="fuBulk">&#128172; WhatsApp this list</button>`:''}
+        <button class="btn sm" id="fuToday">&#9200; Jump to today</button>
+      </div></div>
+    <div class="panel-body flush" id="fuGrid"></div>
+  </div>`;
+
+  O.$$('#fuTabs .chip',host).forEach(ch=>ch.addEventListener('click',()=>{
+    O.fuTab = ch.dataset.t; O.render(); }));
+  O.$('#fuToday').addEventListener('click',()=>{ O.fuTab='today'; O.render(); });
+
+  if(!rows.length){
+    O.$('#fuGrid').innerHTML = `<div class="empty" style="padding:40px"><div class="empty-ico">&#9200;</div>
+      <b>Nothing in ${O.esc(meta.label.toLowerCase())}</b>
+      Set a follow-up date when you log a call and it lands here automatically.</div>`;
+    return;
+  }
+
+  const closedTab = tab==='done';
+  const cols = closedTab
+    ? ['customer_name','due','promised_day','outcome','value','agent','outcome_note','rescheduled_to']
+    : ['customer_name','due','due_label','disposition','value','agent','note','phone','state'];
+
+  const grid = O.Grid({host:O.$('#fuGrid'), rows, cols,
+    sort: closedTab ? 'closed_at' : 'due', dir: closedTab ? 'desc' : 'asc',
+    exportName:'oakcraft-followups-'+tab,
+    filters:[{key:'agent',label:'Agent'},{key:'disposition',label:'Last Outcome'},
+             {key:'state',label:'State'},{key:'__phone',label:'Phone'}],
+    extraActions: closedTab ? [] : [
+      {act:'fu-done', cls:'log', icon:'&#10004;', title:'Close this follow-up — records the outcome'},
+      {act:'fu-snooze', cls:'', icon:'&#8635;', title:'Reschedule — keeps the original promise on record'}
+    ],
+    onAction:(act, rec)=>{
+      if(act==='fu-done') closeFollowup(rec);
+      if(act==='fu-snooze') snoozeFollowup(rec);
+    }});
+
+  const bulk = O.$('#fuBulk');
+  if(bulk) bulk.addEventListener('click',()=>O.bulkWA(grid.visible(), meta.label+' follow-ups'));
+};
+
+/* --- close a follow-up: appends the outcome, never edits the promise --- */
+function closeFollowup(f){
+  const today = O.today();
+  O.modal('Close follow-up — '+O.esc(f.customer_name),
+    `<div class="dr-note" style="margin-bottom:13px">
+       Promised <b>${O.fmt.date(f.due)}</b> (${O.esc(f.due_label)}) after
+       &ldquo;${O.esc(f.disposition||f.type||'activity')}&rdquo; on ${O.fmt.date(f.promised_day)}.
+       ${f.note?`<br><span style="color:var(--tx-2)">${O.esc(f.note)}</span>`:''}
+       <br><br><b>Nothing is deleted.</b> This appends the outcome to the log and leaves the
+       original promise exactly where it is.</div>
+     <div class="fld"><label>What happened?</label>
+       <select id="fu-disp">${C().dispositions.map(d=>
+         `<option${d==='Connected — Follow-up'?' selected':''}>${O.esc(d)}</option>`).join('')}</select></div>
+     <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px">
+       <div class="fld"><label>Expected Order Value (₹)</label>
+         <input id="fu-val" type="number" min="0" step="1000" value="${f.value||''}" placeholder="0"></div>
+       <div class="fld"><label>Next follow-up (leave blank to finish)</label>
+         <input id="fu-next" type="date" min="${today}"></div>
+     </div>
+     <div class="fld"><label>Notes</label>
+       <textarea id="fu-note" placeholder="What was said, what you promised next…"></textarea></div>`,
+    [{label:'Cancel',cls:'ghost',act:()=>O.closeModal()},
+     {label:'Save Outcome',cls:'primary',act:()=>{
+        O.Tracker.closeFollowup(f.id,{
+          disposition:O.$('#fu-disp').value, value:+O.$('#fu-val').value||0,
+          next:O.$('#fu-next').value||'', note:O.$('#fu-note').value.trim(), phone:f.phone});
+        O.closeModal();
+        O.toast(O.$('#fu-next')&&O.$('#fu-next').value?'Outcome saved — next follow-up set':'Follow-up closed');
+        O.render(); }}]);
+}
+
+/* --- reschedule: closes this promise and opens the next one --- */
+function snoozeFollowup(f){
+  const today = O.today();
+  const opts = [['Tomorrow',1],['In 3 days',3],['In a week',7],['In 2 weeks',14]];
+  O.modal('Reschedule — '+O.esc(f.customer_name),
+    `<div class="dr-note" style="margin-bottom:13px">
+       Currently due <b>${O.fmt.date(f.due)}</b> (${O.esc(f.due_label)}).
+       Rescheduling closes this promise and opens the next one, so the chain — and the
+       fact that it slipped — stays on record.</div>
+     <div class="chips" id="fu-quick" style="margin-bottom:12px">
+       ${opts.map(([l,d])=>`<span class="chip" data-d="${O.dateAdd(today,d)}">${l}</span>`).join('')}</div>
+     <div class="fld"><label>New date</label>
+       <input id="fu-newdate" type="date" min="${today}" value="${O.dateAdd(today,1)}"></div>
+     <div class="fld"><label>Why is it moving?</label>
+       <textarea id="fu-why" placeholder="Asked to call next week, travelling, waiting on their approval…"></textarea></div>`,
+    [{label:'Cancel',cls:'ghost',act:()=>O.closeModal()},
+     {label:'Reschedule',cls:'primary',act:()=>{
+        const next=O.$('#fu-newdate').value;
+        if(!next){ O.toast('Pick a date first','warn'); return; }
+        O.Tracker.closeFollowup(f.id,{disposition:'Busy / Call Later', next,
+          note:O.$('#fu-why').value.trim()||'Rescheduled from '+f.due, phone:f.phone});
+        O.closeModal(); O.toast('Moved to '+O.fmt.date(next)); O.render(); }}]);
+  O.$$('#fu-quick .chip').forEach(ch=>ch.addEventListener('click',()=>{
+    O.$('#fu-newdate').value = ch.dataset.d;
+    O.$$('#fu-quick .chip').forEach(x=>x.classList.remove('on')); ch.classList.add('on'); }));
+}
+
+/* ==================================================================
    4. CALL TRACKER
    ================================================================== */
 V.tracker = function(host){
-  const T=O.Tracker, acts=T.all().sort((a,b)=>b.ts.localeCompare(a.ts)), s=T.stats();
-  const today=new Date().toISOString().slice(0,10);
-  const due = acts.filter(a=>a.followup && a.followup<=today);
-  const upcoming = acts.filter(a=>a.followup && a.followup>today)
-    .sort((a,b)=>a.followup.localeCompare(b.followup));
+  const T=O.Tracker, s=T.stats();
+  /* the full record, newest first — voided entries included, because the log
+     is the audit trail and nothing is ever hidden from it */
+  const acts = T.all().slice().sort((a,b)=>String(b.ts).localeCompare(String(a.ts)));
+  const F = T.followups();
 
   host.innerHTML = head('Field Operations','Call Tracker',
-    'Every call, WhatsApp, visit and quotation your team logs. Saved instantly in this browser and pushed to your Google Sheet when the backend URL is configured.',
+    'Every call, WhatsApp, visit and quotation your team logs — an append-only record. Entries are never deleted or overwritten; a correction is logged as a new entry beside the original.',
     T.online() ? `<b>Google Sheets backend connected.</b> ${s.unsynced?`${s.unsynced} activities still pending — hit Sync in the top bar.`:'All activities synced.'}`
-    : `<b>Running in local mode.</b> Activities are saved in this browser only. To write them into Google Sheets, deploy <code>backend/Code.gs</code> as a Web App and paste the <code>/exec</code> URL into <code>js/config.js</code>.`) +
-  `${due.length?`<div class="panel" style="margin-bottom:16px"><div class="panel-head">
-    <div><div class="panel-title" style="color:var(--bad)">&#9888; Follow-ups Due Now (${due.length})</div>
-    <div class="panel-desc">These were promised on or before today</div></div></div>
-    <div class="panel-body flush"><div class="tbl-wrap"><table class="dt"><thead><tr>
-      <th>Customer</th><th>Promised</th><th>Last Outcome</th><th>Note</th><th class="num"></th></tr></thead><tbody>
-      ${due.map(a=>`<tr data-n="${O.esc(a.customer_name)}" style="cursor:pointer">
-        <td class="cell-name">${O.esc(a.customer_name)}</td>
-        <td><span class="tag bad">${O.fmt.dateShort(a.followup)}</span></td>
-        <td><span class="tag mut">${O.esc(a.disposition||'')}</span></td>
-        <td><div class="cell-clip">${O.esc(a.note||'')}</div></td>
-        <td class="num"><button class="ra log" data-log="${O.esc(a.customer_name)}">&#9998;</button></td></tr>`).join('')}
-    </tbody></table></div></div></div>`:''}
-
-  ${upcoming.length?`<div class="panel" style="margin-bottom:16px"><div class="panel-head">
-    <div><div class="panel-title">Upcoming Follow-ups (${upcoming.length})</div></div></div>
-    <div class="panel-body flush"><div class="tbl-wrap" style="max-height:260px"><table class="dt"><thead><tr>
-      <th>Customer</th><th>Scheduled</th><th>Outcome</th><th>Note</th></tr></thead><tbody>
-      ${upcoming.slice(0,25).map(a=>`<tr data-n="${O.esc(a.customer_name)}" style="cursor:pointer">
-        <td class="cell-name">${O.esc(a.customer_name)}</td>
-        <td><span class="tag warn">${O.fmt.dateShort(a.followup)}</span></td>
-        <td><span class="tag mut">${O.esc(a.disposition||'')}</span></td>
-        <td><div class="cell-clip">${O.esc(a.note||'')}</div></td></tr>`).join('')}
-    </tbody></table></div></div></div>`:''}
+    : `<b>Running in local mode.</b> Activities are saved in this browser only. Use <b>Backup JSON</b> below to keep a copy that survives a cleared browser, or deploy <code>backend/Code.gs</code> as a Web App and paste the <code>/exec</code> URL into <code>js/config.js</code> to write them straight into Google Sheets.`) +
+  `${F.dueNow.length?`<div class="callout" style="border-left-color:var(--bad);margin-bottom:16px">
+    <b style="color:var(--bad)">&#9200; ${O.fmt.n(F.dueNow.length)} follow-up${F.dueNow.length===1?'':'s'} need attention</b>
+    — ${O.fmt.n(F.today.length)} due today${F.overdue.length?`, ${O.fmt.n(F.overdue.length)} overdue`:''}.
+    <button class="btn xs" id="tGoFu" style="margin-left:10px">Open the Follow-Up board &#8250;</button></div>`:''}
 
   <div class="panel"><div class="panel-head">
     <div><div class="panel-title">Activity Log</div>
-      <div class="panel-desc">${O.fmt.n(acts.length)} entries</div></div>
+      <div class="panel-desc">${O.fmt.n(acts.length)} entr${acts.length===1?'y':'ies'} on record${
+        s.voided?` &middot; ${O.fmt.n(s.voided)} voided (kept, never deleted)`:''} &middot; append-only</div></div>
     <div class="panel-tools">
       <button class="btn sm" id="tExp">&#8681; Export CSV</button>
-      <button class="btn sm" id="tSync">&#8635; Push to Sheets</button>
-      <button class="btn sm danger" id="tClr">Clear Local Log</button></div></div>
+      <button class="btn sm" id="tBak">&#128190; Backup JSON</button>
+      <button class="btn sm" id="tRes">&#8593; Restore</button>
+      <button class="btn sm" id="tSync">&#8635; Push to Sheets</button></div></div>
     <div class="panel-body flush" id="tGrid"></div></div>`;
+
+  const goFu=O.$('#tGoFu'); if(goFu) goFu.addEventListener('click',()=>O.go('followups'));
 
   if(acts.length){
     O.Grid({host:O.$('#tGrid'),
-      rows: acts.map(a=>({customer_name:a.customer_name, when:new Date(a.ts).toLocaleString('en-IN'),
+      rows: acts.map(a=>({seq:a.seq, id:a.id, customer_name:a.customer_name,
+        when:new Date(a.ts).toLocaleString('en-IN'),
         type:a.type, disposition:a.disposition, phone:a.phone, phones:a.phone?[a.phone]:[],
         has_phone:!!a.phone, value:a.value, followup:a.followup, agent:a.agent, note:a.note,
-        state:a.state, synced:a.synced?'Yes':'Pending'})),
-      cols:['customer_name','when','type','disposition','value','followup','agent','note','synced'],
-      sort:null, exportName:'oakcraft-activity-log',
-      filters:[{key:'disposition',label:'Disposition'},{key:'type',label:'Type'},
-               {key:'agent',label:'Agent'},{key:'synced',label:'Sync'}]});
+        state:a.state, synced:a.synced?'Yes':'Pending',
+        record: a.voided ? 'Voided' : a.type==='void' ? 'Void marker'
+              : a.closes ? 'Follow-up outcome' : 'Original',
+        voided_by:a.voided_by||'', void_reason:a.void_reason||''})),
+      cols:['seq','customer_name','when','type','disposition','value','followup','agent','note','record','synced'],
+      sort:'seq', dir:'desc', exportName:'oakcraft-activity-log',
+      filters:[{key:'record',label:'Record'},{key:'disposition',label:'Disposition'},
+               {key:'type',label:'Type'},{key:'agent',label:'Agent'},{key:'synced',label:'Sync'}]});
   } else {
     O.$('#tGrid').innerHTML='<div class="empty"><div class="empty-ico">&#9998;</div>'+
       '<b>No activity logged yet</b>Open any module, pick a customer and press the pencil icon to log a call.</div>';
   }
-  wireRows(host);
-  O.$$('[data-log]',host).forEach(b=>b.addEventListener('click',e=>{
-    e.stopPropagation(); const c=O.data.customers.find(x=>x.customer_name===b.dataset.log);
-    O.Tracker.openLog(c||{customer_name:b.dataset.log}); }));
   O.$('#tExp')?.addEventListener('click',()=>{
     O.csv.download('oakcraft-activity-log.csv', O.csv.build(acts,[
+      {key:'seq',label:'#'},{key:'id',label:'Entry ID'},
       {key:'ts',label:'Timestamp'},{key:'customer_name',label:'Customer'},{key:'sr_no',label:'Sr No'},
       {key:'type',label:'Type'},{key:'disposition',label:'Disposition'},{key:'phone',label:'Phone'},
       {key:'value',label:'Expected Value'},{key:'followup',label:'Follow-up'},
-      {key:'agent',label:'Agent'},{key:'note',label:'Note'},{key:'state',label:'State'}]));
+      {key:'agent',label:'Agent'},{key:'note',label:'Note'},{key:'state',label:'State'},
+      {key:'closes',label:'Closes Follow-up'},{key:'voids',label:'Voids Entry'},
+      {key:'voided',label:'Voided'},{key:'void_reason',label:'Void Reason'},
+      {key:'voided_by',label:'Voided By'}]));
     O.toast('Activity log exported'); });
   O.$('#tSync')?.addEventListener('click',()=>T.syncAll());
-  O.$('#tClr')?.addEventListener('click',()=>{
-    O.modal('Clear local activity log?',
-      '<p style="font-size:13px;line-height:1.7;color:var(--tx-2)">This removes every activity stored in this browser. '+
-      'Anything already pushed to Google Sheets stays there. Export a CSV first if you want a copy.</p>',
-      [{label:'Cancel',cls:'ghost',act:()=>O.closeModal()},
-       {label:'Clear Log',cls:'danger',act:()=>{O.store.set('activities',[]);O.closeModal();
-         O.toast('Local log cleared','warn');O.render();}}]); });
+  O.$('#tBak')?.addEventListener('click',()=>T.backup());
+  O.$('#tRes')?.addEventListener('click',()=>{
+    const inp=O.el('input',{type:'file',accept:'.json,application/json'});
+    inp.addEventListener('change',()=>{
+      const f=inp.files && inp.files[0]; if(!f) return;
+      const r=new FileReader();
+      r.onload=()=>{ T.restore(String(r.result)); O.render(); };
+      r.readAsText(f); });
+    inp.click(); });
 };
 
 /* ==================================================================

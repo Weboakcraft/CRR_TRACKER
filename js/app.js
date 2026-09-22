@@ -159,6 +159,7 @@ function navGroups(){
       {id:'dashboard', ico:'&#9632;', label:'Executive Dashboard'},
       {id:'analytics', ico:'&#9650;', label:'Advanced Analytics'},
       {id:'queue',     ico:'&#9889;', label:'Priority Call Queue', badge: O.priorityCount()},
+      {id:'followups', ico:'&#9200;', label:'Follow-Ups', badge: O.Tracker.dueNowCount()||null},
       {id:'tracker',   ico:'&#9998;', label:'Call Tracker', badge: O.Tracker.all().length||null},
       {id:'campaign',  ico:'&#128172;', label:'WhatsApp Campaigns'}
     ]},
@@ -219,6 +220,7 @@ O.render = function(){
   switch(O.route.page){
     case 'analytics': V.analytics(host); break;
     case 'queue':     V.queue(host); break;
+    case 'followups': V.followups(host); break;
     case 'tracker':   V.tracker(host); break;
     case 'campaign':  V.campaign(host); break;
     case 'module':    V.module(host, O.route.param); break;

@@ -26,7 +26,9 @@ var SUM_SHEET  = 'Summary';
 
 var HEADERS = ['ID','Timestamp','Date','Customer Name','Sr No','Type','Disposition',
                'Phone','Expected Value','Follow-up Date','Agent','Note','State','Segment',
-               'Customer Total Value','Logged At (IST)'];
+               'Customer Total Value','Logged At (IST)',
+               /* audit trail — the log is append-only, nothing is ever deleted */
+               'Seq','Closes Follow-up','Voids Entry','Voided','Void Reason','Voided By'];
 
 /* ---------------- Helpers ---------------- */
 function ss_(){ return SpreadsheetApp.getActiveSpreadsheet(); }
@@ -40,6 +42,18 @@ function sheet_(name, headers){
        .setFontWeight('bold').setBackground('#1c2537').setFontColor('#f0a830');
       s.setFrozenRows(1);
       s.getRange(1,1,1,headers.length).createFilter?0:0;
+    }
+  } else if(headers){
+    /* A sheet created by an older version is widened in place. Only the
+       header row is touched — no logged row is ever rewritten or removed. */
+    if(s.getMaxColumns() < headers.length)
+      s.insertColumnsAfter(s.getMaxColumns(), headers.length - s.getMaxColumns());
+    var have = s.getRange(1,1,1,headers.length).getValues()[0];
+    var short = false, i;
+    for(i=0;i<headers.length;i++){ if(String(have[i]||'') !== headers[i]){ short = true; break; } }
+    if(short){
+      s.getRange(1,1,1,headers.length).setValues([headers])
+       .setFontWeight('bold').setBackground('#1c2537').setFontColor('#f0a830');
     }
   }
   return s;
@@ -63,7 +77,9 @@ function rowFrom_(a){
     a.type || '', a.disposition || '', a.phone || '',
     a.value || 0, a.followup || '', a.agent || '',
     a.note || '', a.state || '', a.segment || '',
-    a.total_value || 0, istNow_()
+    a.total_value || 0, istNow_(),
+    a.seq == null ? '' : a.seq, a.closes || '', a.voids || '',
+    a.voided ? 'YES' : '', a.void_reason || '', a.voided_by || ''
   ];
 }
 
@@ -136,7 +152,10 @@ function doGet(e){
                  type:r[5], disposition:r[6], phone:String(r[7]), value:Number(r[8])||0,
                  followup:r[9]?Utilities.formatDate(new Date(r[9]),'Asia/Kolkata','yyyy-MM-dd'):'',
                  agent:r[10], note:r[11], state:r[12], segment:r[13],
-                 total_value:Number(r[14])||0 };
+                 total_value:Number(r[14])||0,
+                 seq:Number(r[16])||undefined, closes:String(r[17]||''), voids:String(r[18]||''),
+                 voided:String(r[19]||'')==='YES', void_reason:String(r[20]||''),
+                 voided_by:String(r[21]||'') };
       });
       return json_({ok:true, rows:rows, count:rows.length});
     }

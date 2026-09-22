@@ -30,11 +30,26 @@ O.data = {
   bySr(sr){ return (O.raw['customers']||[]).find(c=>c.sr_no===sr); }
 };
 
-/* ---- Cross-module lookup used by the drawer ---- */
+/* ---- Cross-module lookup used by the drawer and the follow-up board ----
+   Indexed once, so resolving a few thousand follow-ups stays O(n) overall
+   instead of scanning all 760 accounts for every single row.            */
+let IDX = null, IDX_LEN = -1;
+function index(){
+  const list = O.raw['customers']||[];
+  if(IDX && IDX_LEN===list.length) return IDX;
+  IDX = {bySr:new Map(), byName:new Map()};
+  list.forEach(c=>{
+    if(c.sr_no!=null && !IDX.bySr.has(c.sr_no)) IDX.bySr.set(c.sr_no, c);
+    if(c.customer_name && !IDX.byName.has(c.customer_name)) IDX.byName.set(c.customer_name, c);
+  });
+  IDX_LEN = list.length;
+  return IDX;
+}
+O.customerIndex = index;
 O.findCustomer = function(rec){
   if(!rec) return null;
-  const list = O.raw['customers']||[];
-  if(rec.sr_no!=null){ const m=list.find(c=>c.sr_no===rec.sr_no); if(m) return m; }
-  return list.find(c=>c.customer_name===rec.customer_name) || null;
+  const ix = index();
+  if(rec.sr_no!=null){ const m=ix.bySr.get(rec.sr_no); if(m) return m; }
+  return ix.byName.get(rec.customer_name) || null;
 };
 })(window.OAK);
