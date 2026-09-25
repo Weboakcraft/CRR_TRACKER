@@ -24,6 +24,11 @@ var LOG_SHEET  = 'Activity Log';
 var CUST_SHEET = 'Customer Status';
 var SUM_SHEET  = 'Summary';
 
+/* Daily report — who "Share Report" may send to when the WhatsApp Cloud
+   API is configured. Kept HERE, not taken from the browser, so nobody
+   holding the public apiKey can use this script to message other numbers. */
+var REPORT_TO  = ['918700545550', '917210876636'];
+
 var HEADERS = ['ID','Timestamp','Date','Customer Name','Sr No','Type','Disposition',
                'Phone','Expected Value','Follow-up Date','Agent','Note','State','Segment',
                'Customer Total Value','Logged At (IST)',
@@ -127,6 +132,8 @@ function doPost(e){
       setStatus_(p.customer_name, p.sr_no, p.status, p.owner, p.notes);
       return json_({ok:true});
     }
+
+    if(body.action === 'sendReport') return json_(sendReport_(body.payload || {}));
 
     return json_({ok:false, error:'Unknown action'});
   }catch(err){
@@ -246,6 +253,51 @@ function refreshSummary(){
     ['Positive Rate %', d.total ? Math.round(d.positive  / d.total * 100) : 0, now]
   ];
   s.getRange(2,1,rows.length,3).setValues(rows);
+}
+
+/* ---------------- Daily report over WhatsApp Cloud API ----------------
+   Optional. Lets "Share Report" deliver the PDF to REPORT_TO with no taps.
+   Project Settings > Script properties:
+     WA_TOKEN            permanent access token (Meta system user)
+     WA_PHONE_NUMBER_ID  the sending number's Phone number ID
+     WA_TEMPLATE         (recommended) approved template with a DOCUMENT
+                         header — required whenever the recipient has not
+                         messaged your business number in the last 24 h
+     WA_TEMPLATE_LANG    template language code, default "en"
+     WA_API_VERSION      Graph API version, default "v21.0"
+   Then set report.autoSend: true in js/config.js and deploy a new version. */
+function sendReport_(p){
+  var props = PropertiesService.getScriptProperties();
+  var token = props.getProperty('WA_TOKEN'), phoneId = props.getProperty('WA_PHONE_NUMBER_ID');
+  if(!token || !phoneId) return {ok:false, error:'WhatsApp Cloud API is not configured on the backend (WA_TOKEN / WA_PHONE_NUMBER_ID)'};
+  if(!p.base64) return {ok:false, error:'No PDF received'};
+  var ver = props.getProperty('WA_API_VERSION') || 'v21.0';
+  var tpl = props.getProperty('WA_TEMPLATE'), lang = props.getProperty('WA_TEMPLATE_LANG') || 'en';
+  var filename = String(p.filename || 'Daily-Calling-Report.pdf').replace(/[^\w.\-]+/g,'-');
+  var base = 'https://graph.facebook.com/' + ver + '/' + phoneId;
+  var auth = {Authorization: 'Bearer ' + token};
+
+  var blob = Utilities.newBlob(Utilities.base64Decode(p.base64), 'application/pdf', filename);
+  var up = UrlFetchApp.fetch(base + '/media', {method:'post', headers:auth, muteHttpExceptions:true,
+    payload:{messaging_product:'whatsapp', type:'application/pdf', file:blob}});
+  var media = JSON.parse(up.getContentText() || '{}');
+  if(!media.id) return {ok:false, error:'Media upload failed: ' + up.getContentText().slice(0,300)};
+
+  var sent = 0, errors = [];
+  REPORT_TO.forEach(function(to){
+    var msg = tpl
+      ? {messaging_product:'whatsapp', to:to, type:'template', template:{name:tpl, language:{code:lang},
+          components:[{type:'header', parameters:[{type:'document', document:{id:media.id, filename:filename}}]}]}}
+      : {messaging_product:'whatsapp', to:to, type:'document',
+          document:{id:media.id, filename:filename, caption:String(p.caption || '').slice(0,1000)}};
+    var r = UrlFetchApp.fetch(base + '/messages', {method:'post', contentType:'application/json',
+      headers:auth, payload:JSON.stringify(msg), muteHttpExceptions:true});
+    var res = JSON.parse(r.getContentText() || '{}');
+    if(res.messages && res.messages.length) sent++;
+    else errors.push(to + ': ' + ((res.error && res.error.message) || r.getResponseCode()));
+  });
+  return sent === REPORT_TO.length ? {ok:true, sent:sent}
+    : {ok:false, sent:sent, error:errors.join('; ')};
 }
 
 /* Optional: install a 15-minute trigger that keeps the Summary tab fresh */

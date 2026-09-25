@@ -108,6 +108,28 @@ Add call outcomes in `dispositions`, and list the ones that count as wins in
 
 ---
 
+## 4 · Optional: send the daily report automatically on WhatsApp
+
+Out of the box, **Share Report** opens the phone's share sheet with the PDF attached.
+You pick WhatsApp and tick the two contacts. Browsers are not allowed to send a
+WhatsApp message on their own, so skipping those taps needs the official
+**WhatsApp Business Cloud API**:
+
+1. In Meta Business Manager, set up a WhatsApp Business account and a sending number.
+   Create a system user and a **permanent access token** with `whatsapp_business_messaging`.
+2. Create a message template (category *Utility*) with a **Document** header, e.g.
+   `daily_call_report`, and wait for approval. A template is required because WhatsApp
+   only allows free-form messages within 24 h of the recipient last writing to you.
+3. In Apps Script: **Project Settings → Script properties** add
+   `WA_TOKEN`, `WA_PHONE_NUMBER_ID`, `WA_TEMPLATE` (the template name) and, if not
+   English, `WA_TEMPLATE_LANG`.
+4. Recipients are set in `REPORT_TO` at the top of `Code.gs` (with country code). The
+   browser cannot change them, so nobody holding the public key can message other numbers.
+5. Deploy a **New version**, then set `report.autoSend: true` in `js/config.js`.
+
+If sending fails (token expired, template not approved), the app says why and falls
+back to the share sheet, so the report still goes out.
+
 ## Daily use
 
 1. Open **Priority Call Queue** — accounts are already ranked.

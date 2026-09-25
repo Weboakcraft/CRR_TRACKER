@@ -57,6 +57,20 @@ window.OAK.CONFIG = {
     '14-data-to-clean'
   ],
 
+  /* ---- DAILY REPORT ---------------------------------------------
+     "Share Report" sends the PDF to these WhatsApp numbers.
+     autoSend: true sends it straight from the Google Sheets backend
+     through the WhatsApp Cloud API — needs the WA_* script properties
+     described in backend/Code.gs. With it off (or not configured) the
+     phone's share sheet opens with the PDF attached instead.         */
+  report: {
+    shareTo: ['8700545550', '7210876636'],
+    autoSend: false,
+    notConnectedDispositions: ['No Answer','Wrong Number','Switched Off','Busy / Call Later'],
+    hotDispositions: ['Connected — Order Expected','Connected — Interested','Visit Scheduled','Quotation Sent'],
+    lostDispositions: ['Connected — Not Interested','Connected — Already Sourcing']
+  },
+
   currency: { symbol: '₹', locale: 'en-IN' },
   pageSize: 50
 };
