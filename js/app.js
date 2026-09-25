@@ -167,6 +167,7 @@ function navGroups(){
       {id:'queue',     ico:'&#9889;', label:'Priority Call Queue', badge: O.priorityCount()},
       {id:'followups', ico:'&#9200;', label:'Follow-Ups', badge: O.Tracker.dueNowCount()||null},
       {id:'tracker',   ico:'&#9998;', label:'Call Tracker', badge: O.Tracker.all().length||null},
+      {id:'reports',   ico:'&#128202;', label:'Reports', badge: O.Report.todayCount()||null},
       {id:'campaign',  ico:'&#128172;', label:'WhatsApp Campaigns'}
     ]},
     {title:'Modules — one per Excel sheet', items: O.modules().map(mod=>({
@@ -232,6 +233,7 @@ O.render = function(){
     case 'queue':     V.queue(host); break;
     case 'followups': V.followups(host); break;
     case 'tracker':   V.tracker(host); break;
+    case 'reports':   V.reports(host); break;
     case 'campaign':  V.campaign(host); break;
     case 'module':    V.module(host, O.route.param); break;
     default:          V.dashboard(host);

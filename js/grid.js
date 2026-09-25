@@ -22,10 +22,12 @@ const LBL = {
   closed_at:'Closed', rescheduled_to:'Rescheduled To', when:'When', synced:'Sync',
   disposition:'Last Outcome', type:'Type',
   seq:'#', id:'Entry ID', record:'Record', followup:'Follow-up', voided_by:'Voided By',
-  void_reason:'Void Reason'
+  void_reason:'Void Reason',
+  /* daily report */
+  nc_reason:'Reason', nc_attempts:'Attempts', time:'Last Try'
 };
 const NUMCOL = new Set(['seq','sr_no','total_orders','total_value','aov','days_since','upside',
-  'combined_value','records_in_group','churn_risk','value_at_risk','cum_share','value','due_in']);
+  'combined_value','records_in_group','churn_risk','value_at_risk','cum_share','value','due_in','nc_attempts']);
 const MONEY  = new Set(['total_value','aov','upside','combined_value','value_at_risk','value']);
 const WIDE   = new Set(['gap_reason','pitch_angle','what_they_do','evidence','address',
   'verified_business_type','trade_evidence','records','quality_flag','segment','source_url',

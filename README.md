@@ -77,6 +77,31 @@ every record, in sequence, including voided ones. Searchable, filterable by reco
 type, CSV export with the full audit columns, JSON backup and restore. Saves
 instantly in the browser and pushes to Google Sheets.
 
+**Reports: Daily Calling Report**: every party whose status was updated on a given
+day (calls, WhatsApp, visits, quotes, follow-up closures), rolled up to **one row per
+party**. It shows who was called and when, the outcome, **what was discussed** (every
+note from the day, in full), the next follow-up date and the expected value. KPIs cover
+parties called, connected vs not connected and the connect rate, hot leads, expected
+pipeline, follow-ups actioned vs **pending** (due that day plus overdue, excluding
+anyone contacted that day), and new follow-ups booked. It also flags connected parties
+that were left without a next step and calls with no notes. An auto-written *Key
+Insights* list sums up the day, including the best-connecting hour. Then come a retry
+list for everyone not reached, the pending follow-ups, calls by hour and a per-agent
+table. Pick any past date or a single agent.
+
+- **Download PDF** produces a formatted A4 report: header, KPI tiles, insights,
+  outcome and follow-up summary, party-wise table, retry list, pending follow-ups,
+  agent table, and page numbers. `js/pdf.js` writes it with no library.
+- **Share Report** sends that PDF to the numbers in `CONFIG.report.shareTo`
+  (8700545550 and 7210876636):
+  - **Phone / tablet**: the share sheet opens with the PDF already attached. Tap
+    WhatsApp, tick both contacts (or a group holding both), send.
+  - **Desktop**: the PDF downloads, and one button per number opens that WhatsApp
+    chat with the summary typed in. Drop the PDF in and send.
+  - **Fully automatic (optional)**: with the WhatsApp Cloud API keys set on the
+    backend and `report.autoSend: true`, one tap delivers the PDF to both numbers with
+    no further taps (SETUP.md, step 4).
+
 ### Sharing between people
 
 **Out of the box the tracker is single-browser.** Activities live in that browser's
@@ -218,6 +243,8 @@ js/data.js                  data loader
 js/grid.js                  sortable/filterable data grid
 js/tracker.js               call tracker, Sheets sync, WhatsApp
 js/views.js                 dashboard, analytics, queue, tracker, campaigns, modules
+js/reports.js               daily calling report: model, view, PDF layout, WhatsApp share
+js/pdf.js                   zero-dependency PDF writer (Helvetica, tables, wrap)
 js/app.js                   shell, routing, drawer, modals
 data/                       generated real data
 backend/Code.gs             Google Apps Script backend
@@ -239,4 +266,7 @@ No build step, no npm, no CDN, no external requests. Everything is vendored.
 | `defaultAgent` | Name substituted for `{agent}`. |
 | `dispositions` | Call outcome options. |
 | `positiveDispositions` | Which outcomes count as positive in KPIs. |
+| `report.shareTo` | WhatsApp numbers the daily report is shared to. |
+| `report.autoSend` | `true` = send through the backend's WhatsApp Cloud API. |
+| `report.*Dispositions` | Which outcomes count as not connected / hot / declined. |
 | `pageSize` | Table rows per page. Default 50. |
