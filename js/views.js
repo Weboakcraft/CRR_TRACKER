@@ -5,12 +5,12 @@ const C=()=>O.CONFIG, Ch=()=>O.Charts;
 const V = O.Views = {};
 
 /* ---------- shared builders ---------- */
-function head(eyebrow, title, sub, callout){
+function head(eyebrow, title, sub){
   return `<div class="page-head">
     <div class="page-eyebrow">${eyebrow}</div>
     <h1 class="page-title">${O.esc(title)}</h1>
     ${sub?`<div class="page-sub">${O.esc(sub)}</div>`:''}
-  </div>${callout?`<div class="callout">${callout}</div>`:''}`;
+  </div>`;
 }
 function kpi(o){
   return `<div class="kpi" style="--kc:${o.color||'var(--acc)'};--kb:${o.bg||'var(--acc-dim)'}">
@@ -329,9 +329,8 @@ V.queue = function(host){
 
   host.innerHTML = head('Execution','Priority Call Queue',
     custom ? `Filtered to the ${O.fmt.n(cs.length)} accounts in the RFM cell you selected.`
-    : 'Every real account ranked by a composite of 12-month upside, current book value, churn urgency, phone reachability and the recommended action carried in the workbook.',
-    custom ? `<button class="btn xs" id="clrSel">&#10005; Clear RFM filter and show all accounts</button>` :
-    `<b>How the score works:</b> upside (55%) + book value (25%) + upside×churn-risk (60% weight) — then multiplied by reachability (accounts with no phone are down-weighted to 25%), the recommended action, and research confidence. All inputs are real columns from your file.`) +
+    : 'Every real account ranked by a composite of 12-month upside, current book value, churn urgency, phone reachability and the recommended action carried in the workbook.') +
+  (custom ? `<div style="margin-bottom:16px"><button class="btn xs" id="clrSel">&#10005; Clear RFM filter and show all accounts</button></div>` : '') +
   `<div class="panel">
     <div class="panel-head"><div><div class="panel-title">Ranked Queue</div>
       <div class="panel-desc">${O.fmt.n(ranked.length)} real accounts — highest priority first${
@@ -388,11 +387,7 @@ V.followups = function(host){
   host.innerHTML = head('Execution','Follow-Ups',
     `Every promise your team made, derived straight from the activity log. Today's follow-ups open here automatically — ${
       F.today.length? `${O.fmt.n(F.today.length)} due today` : 'nothing is due today'}${
-      F.overdue.length? `, ${O.fmt.n(F.overdue.length)} still overdue` : ''}.`,
-    F.overdue.length
-      ? `<b style="color:var(--bad)">&#9888; ${O.fmt.n(F.overdue.length)} follow-up${F.overdue.length===1?' is':'s are'} past the promised date.</b>
-         Closing one never deletes it — the outcome is appended and the whole chain stays on record.`
-      : `<b>Closing a follow-up never deletes it.</b> The outcome is appended to the log and the original promise stays on record, so the full history is always auditable.`) +
+      F.overdue.length? `, ${O.fmt.n(F.overdue.length)} still overdue` : ''}.`) +
   sharingBanner() +
   `<div class="chips" id="fuTabs" style="margin-bottom:14px">
     ${FU_TABS.map(t=>`<span class="chip${t.k===tab?' on':''}" data-t="${t.k}">${t.label}
@@ -514,9 +509,7 @@ V.tracker = function(host){
   const F = T.followups();
 
   host.innerHTML = head('Field Operations','Call Tracker',
-    'Every call, WhatsApp, visit and quotation your team logs — an append-only record. Entries are never deleted or overwritten; a correction is logged as a new entry beside the original.',
-    T.online() ? `<b>Google Sheets backend connected.</b> Everyone on this link shares one log, refreshed every ${O.num(C().syncIntervalSec)||45}s. ${s.unsynced?`${s.unsynced} activities still pending — hit Sync in the top bar.`:'All activities synced.'}`
-    : '') +
+    'Every call, WhatsApp, visit and quotation your team logs — an append-only record. Entries are never deleted or overwritten; a correction is logged as a new entry beside the original.') +
   sharingBanner() +
   `${F.dueNow.length?`<div class="callout" style="border-left-color:var(--bad);margin-bottom:16px">
     <b style="color:var(--bad)">&#9200; ${O.fmt.n(F.dueNow.length)} follow-up${F.dueNow.length===1?'':'s'} need attention</b>
@@ -614,8 +607,7 @@ V.campaign = function(host){
 
   const reach=cs.filter(c=>c.has_phone);
   host.innerHTML = head('Outreach','WhatsApp Campaigns',
-    `Ready-made campaign lists built from the real segmentation in your workbook. ${O.fmt.n(reach.length)} of ${O.fmt.n(cs.length)} accounts carry a working number, so those are the only ones a WhatsApp campaign can reach.`,
-    `<b>How sending works:</b> browsers block mass auto-opening of chats, so each campaign runs as a guided sequence — one chat opens at a time with the message pre-filled, and every send is logged to the Call Tracker automatically. You can also export the whole list as a CSV of <code>wa.me</code> links for a BSP or bulk tool.`) +
+    `Ready-made campaign lists built from the real segmentation in your workbook. ${O.fmt.n(reach.length)} of ${O.fmt.n(cs.length)} accounts carry a working number, so those are the only ones a WhatsApp campaign can reach.`) +
   `<div class="grid g2" id="campGrid">
     ${presets.map(p=>`<div class="panel"><div class="panel-head">
       <div style="flex:1"><div class="panel-title">${O.esc(p.name)}</div>
@@ -691,8 +683,7 @@ function paintModule(host, mod, meta){
   /* keep the sidebar badge honest — it should count what is actually listed */
   if(O.moduleCount[mod.id] !== rows.length){ O.moduleCount[mod.id] = rows.length; O.buildNav && O.buildNav(); }
 
-  host.innerHTML = head('Module '+meta.code, meta.title,
-    null, `<b>${O.esc(meta.sheet_name)}</b> — ${O.esc(meta.subtitle)}`) +
+  host.innerHTML = head('Module '+meta.code, meta.title, meta.subtitle) +
     `<div class="panel"><div class="panel-head">
       <div><div class="panel-title">${O.esc(meta.sheet_name)}</div>
         <div class="panel-desc">${O.fmt.n(rows.length)} rows from the workbook${
