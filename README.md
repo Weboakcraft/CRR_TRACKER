@@ -77,8 +77,8 @@ every record, in sequence, including voided ones. Searchable, filterable by reco
 type, CSV export with the full audit columns, JSON backup and restore. Saves
 instantly in the browser and pushes to Google Sheets.
 
-**Reports: Daily Calling Report**: every party whose status was updated on a given
-day (calls, WhatsApp, visits, quotes, follow-up closures), rolled up to **one row per
+**Reports: Daily / Weekly / Monthly / Custom Range**: every party whose status was
+updated in the chosen period (calls, WhatsApp, visits, quotes, follow-up closures), rolled up to **one row per
 party**. It shows who was called and when, the outcome, **what was discussed** (every
 note from the day, in full), the next follow-up date and the expected value. KPIs cover
 parties called, connected vs not connected and the connect rate, hot leads, expected
@@ -88,6 +88,24 @@ that were left without a next step and calls with no notes. An auto-written *Key
 Insights* list sums up the day, including the best-connecting hour. Then come a retry
 list for everyone not reached, the pending follow-ups, calls by hour and a per-agent
 table. Pick any past date or a single agent.
+
+The period switch at the top of the page picks what the report covers:
+
+| Mode | Covers | Navigate with |
+|---|---|---|
+| **Daily** | one calendar day | date picker, Today, Previous / Next day |
+| **Weekly** | Monday to Sunday of the picked day | "Week of" date picker, This week, Previous / Next week |
+| **Monthly** | one calendar month | month picker, This month, Previous / Next month |
+| **Custom Range** | any From – To dates, both inclusive | From / To pickers, Last 7 days, Last 30 days |
+
+Every KPI, insight, table, chart, the PDF and the WhatsApp summary are rebuilt for the
+period. Over several days a party is still **one row**: its status is the best thing
+that happened (connected beats not connected) and its outcome is its last word. The
+follow-up book is read as it stood at the end of the period (or today, for a period
+still running): *due* means due inside the period, *overdue* means due before it, and a
+follow-up counts as actioned if the party was contacted in the period after the promise
+was made. Multi-day periods add a **Day-wise Trend** chart and table (click a day to open
+its daily report), an *Avg / Calling Day* KPI and a day-wise table in the PDF.
 
 - **Download PDF** produces a formatted A4 report: header, KPI tiles, insights,
   outcome and follow-up summary, party-wise table, retry list, pending follow-ups,
@@ -243,7 +261,7 @@ js/data.js                  data loader
 js/grid.js                  sortable/filterable data grid
 js/tracker.js               call tracker, Sheets sync, WhatsApp
 js/views.js                 dashboard, analytics, queue, tracker, campaigns, modules
-js/reports.js               daily calling report: model, view, PDF layout, WhatsApp share
+js/reports.js               calling reports (day/week/month/range): model, view, PDF, WhatsApp share
 js/pdf.js                   zero-dependency PDF writer (Helvetica, tables, wrap)
 js/app.js                   shell, routing, drawer, modals
 data/                       generated real data

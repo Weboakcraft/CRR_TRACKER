@@ -67,7 +67,8 @@ Charts.bars = function(host, data, opt){
       (d.count!=null?`<br>${O.fmt.n(d.count)} accounts`:'')+`</span>`);
     if(opt.onClick){ r.style.cursor='pointer'; r.addEventListener('click',()=>opt.onClick(d)); }
     svg.appendChild(r);
-    if(data.length<=26 && (data.length<=14 || i%2===0)){
+    /* opt.labelEvery lets a long series (e.g. 31 days) keep a readable axis */
+    if(opt.labelEvery ? i%opt.labelEvery===0 : data.length<=26 && (data.length<=14 || i%2===0)){
       const t=mk('text',{class:'ct-axis',x:x+(bw-pad)/2,y:H-13,'text-anchor':'middle'});
       t.textContent=d.label||d.key; svg.appendChild(t); }
   });
